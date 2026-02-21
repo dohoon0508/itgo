@@ -27,6 +27,15 @@ npm run dev
 - Tailwind CSS 3
 - 한글 UI, 블루/네이비 포인트 컬러
 
+## GitHub Pages 배포
+
+1. 저장소 **Settings → Pages** 로 이동
+2. **Source** 에서 **GitHub Actions** 선택
+3. `main` 브랜치에 푸시하면 자동으로 빌드·배포됩니다.
+4. 배포 완료 후 접속 주소: `https://dohoon0508.github.io/itgo/`
+
+(최초 배포 후 1~2분 정도 걸릴 수 있습니다.)
+
 ## 참고
 
 - 실제 서버 연결 없이 프론트엔드만 동작합니다.
