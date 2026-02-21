@@ -27,16 +27,13 @@ jobs:
           cache: 'npm'
 
       - name: Install
-        run: npm ci
+        run: npm install
 
       - name: Build
         run: npm run build
 
       - name: Fix SPA routing (404 fallback)
         run: cp dist/index.html dist/404.html
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
@@ -49,6 +46,9 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
+    permissions:
+      pages: write
+      id-token: write
     steps:
       - name: Deploy to GitHub Pages
         id: deployment

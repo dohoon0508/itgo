@@ -30,11 +30,15 @@ npm run dev
 ## GitHub Pages 배포
 
 1. 저장소 **Settings → Pages** 로 이동
-2. **Source** 에서 **GitHub Actions** 선택
+2. **Build and deployment** 의 **Source** 를 **GitHub Actions** 로 선택 (필수)
 3. `main` 브랜치에 푸시하면 자동으로 빌드·배포됩니다.
 4. 배포 완료 후 접속 주소: `https://dohoon0508.github.io/itgo/`
 
 (최초 배포 후 1~2분 정도 걸릴 수 있습니다.)
+
+**배포가 실패할 때:**  
+- **Settings → Pages** 에서 Source가 **GitHub Actions** 인지 확인하세요.  
+- **Actions** 탭에서 실패한 run을 클릭한 뒤, 어떤 step에서 빨간색 X가 뜨는지와 로그의 에러 메시지를 확인하세요.
 
 ## 참고
 
