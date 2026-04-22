@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MENTOR_CATEGORIES } from '../data/mentors'
+import { generateMentorProfileDraft, recommendMentorTags } from '../utils/aiPrototype'
 
 export default function MentorRegisterPage() {
   const navigate = useNavigate()
@@ -14,10 +15,39 @@ export default function MentorRegisterPage() {
     price30: '',
     price60: '',
   })
+  const [recommendedTags, setRecommendedTags] = useState([])
+  const [isGeneratingIntro, setIsGeneratingIntro] = useState(false)
+  const [isGeneratingTags, setIsGeneratingTags] = useState(false)
 
   const handleChange = (e) => {
     const { name, value } = e.target
     setForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const waitAi = () => new Promise((resolve) => setTimeout(resolve, 1000))
+
+  const handleGenerateIntro = () => {
+    setIsGeneratingIntro(true)
+    waitAi().then(() => {
+      setForm((prev) => ({
+        ...prev,
+        intro: generateMentorProfileDraft(prev),
+      }))
+      setIsGeneratingIntro(false)
+    })
+  }
+
+  const handleGenerateTags = () => {
+    setIsGeneratingTags(true)
+    waitAi().then(() => {
+      const tags = recommendMentorTags(form)
+      setRecommendedTags(tags)
+      setForm((prev) => ({
+        ...prev,
+        topics: tags.join(', '),
+      }))
+      setIsGeneratingTags(false)
+    })
   }
 
   const handleSubmit = (e) => {
@@ -89,6 +119,14 @@ export default function MentorRegisterPage() {
         <div className="bg-white rounded-2xl p-6 shadow-card border border-gray-100">
           <h2 className="font-semibold text-gray-800 mb-2">소개</h2>
           <p className="text-sm text-gray-500 mb-4">멘티에게 보여질 프로필 소개를 작성해 주세요.</p>
+          <button
+            type="button"
+            onClick={handleGenerateIntro}
+            disabled={isGeneratingIntro}
+            className="mb-3 px-3 py-2 rounded-lg text-sm font-medium bg-primary-50 text-primary-700 border border-primary-100 hover:bg-primary-100 disabled:opacity-60"
+          >
+            {isGeneratingIntro ? 'AI 소개글 생성 중...' : 'AI 소개글 초안 생성'}
+          </button>
           <textarea
             name="intro"
             value={form.intro}
@@ -102,6 +140,14 @@ export default function MentorRegisterPage() {
         <div className="bg-white rounded-2xl p-6 shadow-card border border-gray-100">
           <h2 className="font-semibold text-gray-800 mb-2">상담 가능 주제</h2>
           <p className="text-sm text-gray-500 mb-4">쉼표로 구분해 입력해 주세요. (예: 취업 준비, 포트폴리오 피드백, 직무 전환)</p>
+          <button
+            type="button"
+            onClick={handleGenerateTags}
+            disabled={isGeneratingTags}
+            className="mb-3 px-3 py-2 rounded-lg text-sm font-medium bg-navy-50 text-navy-700 border border-navy-100 hover:bg-navy-100 disabled:opacity-60"
+          >
+            {isGeneratingTags ? 'AI 태그 분석 중...' : '경력 기반 태그 자동 추천'}
+          </button>
           <input
             type="text"
             name="topics"
@@ -110,6 +156,15 @@ export default function MentorRegisterPage() {
             placeholder="취업 준비, 직무 이해, 포트폴리오 피드백, 이직 고민"
             className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none"
           />
+          {recommendedTags.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {recommendedTags.map((tag) => (
+                <span key={tag} className="px-2.5 py-1 rounded-full text-xs bg-primary-50 text-primary-700 border border-primary-100">
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="bg-white rounded-2xl p-6 shadow-card border border-gray-100">

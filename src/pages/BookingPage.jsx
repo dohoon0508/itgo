@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { mentors } from '../data/mentors'
+import {
+  getMentorQuestionTemplates,
+  recommendCareerPaths,
+  recommendMentorsForMentee,
+  buildExecutionPlan,
+} from '../utils/aiPrototype'
 
 const GOAL_OPTIONS = [
   '직무 이해',
@@ -22,6 +28,17 @@ export default function BookingPage() {
   const [email, setEmail] = useState('')
   const [concern, setConcern] = useState('')
   const [goals, setGoals] = useState([])
+  const [aiExampleIndex, setAiExampleIndex] = useState(null)
+  const [major, setMajor] = useState('')
+  const [experience, setExperience] = useState('')
+  const [interest, setInterest] = useState('')
+  const [careerRecommendations, setCareerRecommendations] = useState([])
+  const [mentorRecommendations, setMentorRecommendations] = useState([])
+  const [executionPlan, setExecutionPlan] = useState(null)
+  const [isGeneratingQuestion, setIsGeneratingQuestion] = useState(false)
+  const [isGeneratingCareer, setIsGeneratingCareer] = useState(false)
+  const [isGeneratingMentorRec, setIsGeneratingMentorRec] = useState(false)
+  const [isGeneratingPlan, setIsGeneratingPlan] = useState(false)
 
   if (!mentor) {
     return (
@@ -36,6 +53,60 @@ export default function BookingPage() {
 
   const toggleGoal = (g) => {
     setGoals((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]))
+  }
+
+  const mentorTemplates = getMentorQuestionTemplates(mentor)
+  const waitAi = () => new Promise((resolve) => setTimeout(resolve, 1000))
+
+  const handleGenerateAiQuestion = () => {
+    setIsGeneratingQuestion(true)
+    waitAi().then(() => {
+      const nextIndex =
+        aiExampleIndex === null ? 0 : (aiExampleIndex + 1) % mentorTemplates.length
+      setAiExampleIndex(nextIndex)
+      setConcern(mentorTemplates[nextIndex])
+      setIsGeneratingQuestion(false)
+    })
+  }
+
+  const handleGenerateCareerRecommendation = () => {
+    setIsGeneratingCareer(true)
+    waitAi().then(() => {
+      setCareerRecommendations(
+        recommendCareerPaths({
+          major,
+          experience,
+          interest,
+        })
+      )
+      setIsGeneratingCareer(false)
+    })
+  }
+
+  const handleGenerateMentorRecommendation = () => {
+    setIsGeneratingMentorRec(true)
+    waitAi().then(() => {
+      setMentorRecommendations(
+        recommendMentorsForMentee({
+          concern,
+          goals,
+        })
+      )
+      setIsGeneratingMentorRec(false)
+    })
+  }
+
+  const handleGenerateExecutionPlan = () => {
+    setIsGeneratingPlan(true)
+    waitAi().then(() => {
+      setExecutionPlan(
+        buildExecutionPlan({
+          concern,
+          goals,
+        })
+      )
+      setIsGeneratingPlan(false)
+    })
   }
 
   const handleSubmit = (e) => {
@@ -88,7 +159,22 @@ export default function BookingPage() {
 
         <div className="bg-white rounded-2xl p-6 shadow-card border border-gray-100">
           <h2 className="font-semibold text-gray-800 mb-2">고민 내용</h2>
-          <p className="text-sm text-gray-500 mb-4">어떤 고민이 있는지 작성해 주세요. 멘토가 미리 파악하고 상담에 반영합니다.</p>
+          <p className="text-sm text-gray-500 mb-3">
+            어떤 고민이 있는지 작성해 주세요. 멘토가 미리 파악하고 상담에 반영합니다.
+          </p>
+          <div className="flex flex-col gap-3 mb-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs sm:text-sm text-gray-500">
+              <span className="font-medium text-primary-600">{mentor.name}</span> 멘토님께 할 질문이 막막하다면, 버튼을 누르면 멘토 직무·상담 주제에 맞춰 자동으로 질문 문장을 만들어 드려요.
+            </p>
+            <button
+              type="button"
+              onClick={handleGenerateAiQuestion}
+              disabled={isGeneratingQuestion}
+              className="inline-flex items-center justify-center px-3 py-2 rounded-lg text-xs sm:text-sm font-medium bg-primary-50 text-primary-700 hover:bg-primary-100 border border-primary-100 transition"
+            >
+              {isGeneratingQuestion ? 'AI 문장 생성 중...' : '멘토에게 할 질문 자동 생성'}
+            </button>
+          </div>
           <textarea
             value={concern}
             onChange={(e) => setConcern(e.target.value)}
@@ -114,6 +200,114 @@ export default function BookingPage() {
               </label>
             ))}
           </div>
+        </div>
+
+        <div className="bg-white rounded-2xl p-6 shadow-card border border-gray-100 space-y-5">
+          <h2 className="font-semibold text-gray-800">AI 직무/멘토 추천</h2>
+          <p className="text-sm text-gray-500">전공·경험·관심사를 입력하면 추천 직무와 멘토를 제안해 드립니다.</p>
+          <div className="grid sm:grid-cols-3 gap-3">
+            <input
+              type="text"
+              value={major}
+              onChange={(e) => setMajor(e.target.value)}
+              placeholder="전공 (예: 경영학)"
+              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none"
+            />
+            <input
+              type="text"
+              value={experience}
+              onChange={(e) => setExperience(e.target.value)}
+              placeholder="경험 (예: 공모전, 인턴)"
+              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none"
+            />
+            <input
+              type="text"
+              value={interest}
+              onChange={(e) => setInterest(e.target.value)}
+              placeholder="관심사 (예: 데이터, 서비스)"
+              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handleGenerateCareerRecommendation}
+              disabled={isGeneratingCareer}
+              className="px-3 py-2 rounded-lg text-sm font-medium bg-primary-50 text-primary-700 border border-primary-100 hover:bg-primary-100 disabled:opacity-60"
+            >
+              {isGeneratingCareer ? 'AI 분석 중...' : '직무/산업군 추천'}
+            </button>
+            <button
+              type="button"
+              onClick={handleGenerateMentorRecommendation}
+              disabled={isGeneratingMentorRec}
+              className="px-3 py-2 rounded-lg text-sm font-medium bg-navy-50 text-navy-700 border border-navy-100 hover:bg-navy-100 disabled:opacity-60"
+            >
+              {isGeneratingMentorRec ? 'AI 매칭 중...' : '적합 멘토 추천'}
+            </button>
+          </div>
+
+          {careerRecommendations.length > 0 && (
+            <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-4">
+              <p className="text-sm font-semibold text-primary-700 mb-2">추천 직무/산업군</p>
+              <div className="space-y-2">
+                {careerRecommendations.map((item) => (
+                  <div key={`${item.category}-${item.role}`} className="text-sm text-gray-700">
+                    <span className="font-medium">{item.role}</span> · {item.industry}
+                    <p className="text-xs text-gray-500 mt-0.5">{item.reason}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {mentorRecommendations.length > 0 && (
+            <div className="rounded-xl border border-navy-100 bg-navy-50/40 p-4">
+              <p className="text-sm font-semibold text-navy-700 mb-2">추천 멘토 TOP 3</p>
+              <div className="space-y-2">
+                {mentorRecommendations.map((item) => (
+                  <div key={item.id} className="text-sm text-gray-700">
+                    <span className="font-medium">{item.rank}위 {item.name}</span> · {item.role}
+                    <p className="text-xs text-gray-500 mt-0.5">{item.reason}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-2xl p-6 shadow-card border border-gray-100 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="font-semibold text-gray-800">AI 실행 목표 설정</h2>
+              <p className="text-sm text-gray-500">상담 후 바로 실천할 1주/2주/1개월 액션을 제안합니다.</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleGenerateExecutionPlan}
+              disabled={isGeneratingPlan}
+              className="px-3 py-2 rounded-lg text-sm font-medium bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 disabled:opacity-60"
+            >
+              {isGeneratingPlan ? 'AI 계획 생성 중...' : '실행 목표 생성'}
+            </button>
+          </div>
+
+          {executionPlan && (
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4">
+              <p className="text-sm text-gray-700">{executionPlan.summary}</p>
+              <div className="mt-3 space-y-1.5">
+                {executionPlan.actions.map((action) => (
+                  <label key={action.period} className="flex items-start gap-2 text-sm text-gray-700">
+                    <input type="checkbox" className="mt-1 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
+                    <span><span className="font-medium">{action.period}</span> - {action.item}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="mt-3 text-xs text-gray-500">
+                추천 점검 시간: {executionPlan.reminderOptions.join(' / ')}
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="bg-primary-50 rounded-2xl p-6 border border-primary-100">
