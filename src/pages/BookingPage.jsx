@@ -88,6 +88,7 @@ export default function BookingPage() {
   const handleSubmit = (e) => {
     e.preventDefault()
     const reservation = addReservation({
+      menteeId: currentMentee?.id || 'mentee-001',
       menteeName: name,
       mentorId: mentor.id,
       mentorName: mentor.name,

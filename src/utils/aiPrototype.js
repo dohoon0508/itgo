@@ -142,23 +142,45 @@ export function recommendMentorTags({ role = '', intro = '', topics = '' }) {
 }
 
 export function buildMenteePreReport(session) {
+  const targetName = session.menteeName || '멘티'
   return {
-    summary: `${session.mentorName} 멘토와의 ${session.duration}분 상담 예정. 멘티는 직무 방향성과 준비 전략에 대한 조언을 원합니다.`,
+    summary: `${targetName} 멘티와의 ${session.duration}분 상담 예정. 멘티는 직무 방향성과 준비 전략에 대한 조언을 원합니다.`,
     keyNeeds: ['현재 역량 진단', '직무별 준비 우선순위 설정', '다음 2주 실행 계획 확정'],
     riskPoint: '질문 범위가 넓어 시간이 분산될 수 있어, 핵심 질문 2개부터 확인이 필요합니다.',
   }
 }
 
-export function suggestCounselingGuide(sessionType = '일반') {
+export function suggestCounselingGuide(input = '일반') {
+  const sessionType = typeof input === 'string' ? input : input?.sessionType || '일반'
+  const concernText = typeof input === 'string' ? '' : (input?.concernText || '')
+  const selectedQuestions = Array.isArray(input?.selectedQuestions) ? input.selectedQuestions : []
+
   const base = [
     { step: '오프닝 5분', guide: '현재 고민의 맥락과 기대 결과를 명확히 확인' },
     { step: '진단 15분', guide: '경험/역량/목표 갭을 질문 기반으로 진단' },
     { step: '솔루션 20분', guide: '실행 가능한 액션 2~3개로 구체화' },
     { step: '마무리 5분', guide: '다음 점검 일정과 성공 지표 합의' },
   ]
-  if (sessionType.includes('포트폴리오')) {
-    base[2].guide = '포트폴리오 개선 포인트를 우선순위로 제시'
+
+  const joinedQuestions = selectedQuestions.join(' ')
+  const combined = `${sessionType} ${concernText} ${joinedQuestions}`.toLowerCase()
+
+  if (combined.includes('포트폴리오')) {
+    base[2].guide = '포트폴리오 개선 포인트를 우선순위로 정리하고, 1차 산출물 범위를 합의'
   }
+  if (combined.includes('공백기')) {
+    base[1].guide = '공백기 맥락을 강점 중심 서사로 재구성하고, 자기소개 문장 초안을 함께 작성'
+  }
+  if (combined.includes('면접')) {
+    base[3].guide = '예상 질문 3개와 답변 구조를 확정하고 다음 상담 전 리허설 과제를 설정'
+  }
+  if (combined.includes('서비스') || combined.includes('기획') || combined.includes('pm')) {
+    base[2].guide = '서비스/기획 관점의 문제정의-개선안-성과지표 흐름으로 액션을 구체화'
+  }
+  if (selectedQuestions.length > 0) {
+    base[0].guide = `멘티가 사전 선택한 핵심 질문 ${Math.min(selectedQuestions.length, 3)}개를 우선 순서대로 확인`
+  }
+
   return base
 }
 

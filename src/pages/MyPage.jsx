@@ -13,6 +13,12 @@ import {
 import { getAuthUser } from '../utils/auth'
 import { getMenteePersonaById } from '../data/mentees'
 import { cancelReservation, getReservations } from '../utils/reservations'
+import {
+  addMentorInteraction,
+  deleteMentorInteraction,
+  getMentorInteractions,
+  markInteractionRead,
+} from '../utils/mentorInteractions'
 
 const TABS = [
   { id: 'scheduled', label: '예정' },
@@ -27,9 +33,9 @@ const menteeSessions = [
 ]
 
 const mentorSessions = [
-  { id: 's1', mentorId: '1', menteeName: '홍길동', role: '서비스 기획 관심 멘티', date: '2025.02.24', time: '14:00', status: 'scheduled', duration: 30 },
-  { id: 's2', mentorId: '1', menteeName: '김하나', role: '개발 취업 준비 멘티', date: '2025.02.20', time: '19:00', status: 'completed', duration: 60 },
-  { id: 's3', mentorId: '1', menteeName: '박민재', role: '직무 전환 고민 멘티', date: '2025.02.15', time: '11:00', status: 'completed', duration: 30 },
+  { id: 's1', mentorId: '1', menteeId: 'mentee-001', menteeName: '김지우', role: '서비스 기획 관심 멘티', date: '2025.02.24', time: '14:00', status: 'scheduled', duration: 30 },
+  { id: 's2', mentorId: '1', menteeId: 'mentee-002', menteeName: '이하린', role: '개발 취업 준비 멘티', date: '2025.02.20', time: '19:00', status: 'completed', duration: 60 },
+  { id: 's3', mentorId: '1', menteeId: 'mentee-003', menteeName: '박민지', role: '직무 전환 고민 멘티', date: '2025.02.15', time: '11:00', status: 'completed', duration: 30 },
 ]
 
 export default function MyPage() {
@@ -39,10 +45,10 @@ export default function MyPage() {
   const userRole = authUser?.role
   const currentMentee = getMenteePersonaById(authUser?.currentMenteeId)
   const justBooked = searchParams.get('booked') === '1'
+
   const [activeTab, setActiveTab] = useState('scheduled')
   const [preReports, setPreReports] = useState({})
   const [guideReports, setGuideReports] = useState({})
-  const [postReports, setPostReports] = useState({})
   const [sessionNotes, setSessionNotes] = useState({})
   const [opsReport, setOpsReport] = useState(null)
   const [loadingId, setLoadingId] = useState('')
@@ -51,18 +57,19 @@ export default function MyPage() {
   const [analysisResult, setAnalysisResult] = useState(null)
   const [isGeneratingMentorRecs, setIsGeneratingMentorRecs] = useState(false)
   const [mentorRecommendations, setMentorRecommendations] = useState([])
-  const [reservationList, setReservationList] = useState(() =>
-    getReservations().filter((item) => item.status !== 'cancelled')
-  )
+  const [reservationList, setReservationList] = useState(() => getReservations().filter((item) => item.status !== 'cancelled'))
   const [mentorActionPlans, setMentorActionPlans] = useState({})
+  const [editingPlanSessionId, setEditingPlanSessionId] = useState(null)
+  const [editingPlanSummary, setEditingPlanSummary] = useState('')
+  const [editingPlanActionsText, setEditingPlanActionsText] = useState('')
+  const [sharedInteractions, setSharedInteractions] = useState(() => getMentorInteractions())
+  const [mentorSessionList, setMentorSessionList] = useState(mentorSessions)
 
-  const sourceSessions = userRole === 'mentor' ? mentorSessions : menteeSessions
+  const sourceSessions = userRole === 'mentor' ? mentorSessionList : menteeSessions
   const scheduled = sourceSessions.filter((s) => s.status === 'scheduled')
   const completed = sourceSessions.filter((s) => s.status === 'completed')
   const cancelled = sourceSessions.filter((s) => s.status === 'cancelled')
-
-  const listByTab =
-    activeTab === 'scheduled' ? scheduled : activeTab === 'completed' ? completed : cancelled
+  const listByTab = activeTab === 'scheduled' ? scheduled : activeTab === 'completed' ? completed : cancelled
   const waitAi = () => new Promise((resolve) => setTimeout(resolve, 1000))
 
   const handleGeneratePreReport = (session) => {
@@ -76,17 +83,14 @@ export default function MyPage() {
   const handleGenerateGuide = (session) => {
     setLoadingId(`guide-${session.id}`)
     waitAi().then(() => {
-      setGuideReports((prev) => ({ ...prev, [session.id]: suggestCounselingGuide(session.role) }))
-      setLoadingId('')
-    })
-  }
-
-  const handleGeneratePostReport = (session) => {
-    setLoadingId(`post-${session.id}`)
-    waitAi().then(() => {
-      setPostReports((prev) => ({
+      const reservation = getLatestReservationForMentee(session.menteeId, session.menteeName)
+      setGuideReports((prev) => ({
         ...prev,
-        [session.id]: buildPostSessionOutput(sessionNotes[session.id] || ''),
+        [session.id]: suggestCounselingGuide({
+          sessionType: session.role,
+          concernText: reservation?.concernText || '',
+          selectedQuestions: reservation?.questionSelections || [],
+        }),
       }))
       setLoadingId('')
     })
@@ -98,26 +102,6 @@ export default function MyPage() {
       setOpsReport(buildMentorOpsReport(sourceSessions))
       setIsOpsGenerating(false)
     })
-  }
-
-  if (!userRole) {
-    return (
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-12">
-        <div className="bg-white rounded-2xl p-8 border border-gray-100 shadow-card text-center">
-          <h1 className="text-xl font-bold text-navy-800">로그인이 필요합니다</h1>
-          <p className="mt-2 text-sm text-gray-500">
-            멘티/멘토 역할을 선택해서 로그인하면 해당 마이페이지를 볼 수 있어요.
-          </p>
-          <button
-            type="button"
-            onClick={() => navigate('/login')}
-            className="mt-6 px-5 py-2.5 rounded-xl bg-primary-600 text-white font-medium hover:bg-primary-700"
-          >
-            로그인하러 가기
-          </button>
-        </div>
-      </div>
-    )
   }
 
   const handleStartPersonaAnalysis = () => {
@@ -146,21 +130,122 @@ export default function MyPage() {
   const handleGenerateMentorActionPlan = (session) => {
     setLoadingId(`plan-${session.id}`)
     waitAi().then(() => {
+      const postSummary = buildPostSessionOutput(sessionNotes[session.id] || '')
       const summary = buildExecutionPlan({
         concern: sessionNotes[session.id] || `${session.menteeName} 멘티 상담 후속 액션`,
         goals: ['준비 방향'],
       })
-      setMentorActionPlans((prev) => ({ ...prev, [session.id]: summary }))
+      setMentorActionPlans((prev) => ({
+        ...prev,
+        [session.id]: {
+          ...summary,
+          feedback: postSummary.feedback,
+        },
+      }))
       setLoadingId('')
     })
   }
 
+  const handleStartEditActionPlan = (sessionId) => {
+    const plan = mentorActionPlans[sessionId]
+    if (!plan) return
+    setEditingPlanSessionId(sessionId)
+    setEditingPlanSummary(plan.summary || '')
+    setEditingPlanActionsText((plan.actions || []).map((a) => `${a.period} - ${a.item}`).join('\n'))
+  }
+
+  const handleSaveActionPlan = (sessionId) => {
+    const lines = editingPlanActionsText.split('\n').map((line) => line.trim()).filter(Boolean)
+    const parsedActions = lines.map((line, idx) => {
+      const splitIdx = line.indexOf(' - ')
+      if (splitIdx > -1) {
+        return { period: line.slice(0, splitIdx).trim(), item: line.slice(splitIdx + 3).trim() }
+      }
+      return { period: `단계 ${idx + 1}`, item: line }
+    })
+
+    setMentorActionPlans((prev) => ({
+      ...prev,
+      [sessionId]: { ...prev[sessionId], summary: editingPlanSummary, actions: parsedActions },
+    }))
+    setEditingPlanSessionId(null)
+    setEditingPlanSummary('')
+    setEditingPlanActionsText('')
+  }
+
+  const handleCancelEditActionPlan = () => {
+    setEditingPlanSessionId(null)
+    setEditingPlanSummary('')
+    setEditingPlanActionsText('')
+  }
+
+  const handleShareMentorAction = (session) => {
+    const actionPlan = mentorActionPlans[session.id]
+    if (!actionPlan) return
+    addMentorInteraction({
+      sessionId: session.id,
+      mentorName: '김민수 멘토',
+      menteeId: session.menteeId || 'mentee-001',
+      menteeName: session.menteeName,
+      feedback: actionPlan?.feedback || '',
+      actionItems: actionPlan?.actions?.map((a) => `${a.period} - ${a.item}`) || [],
+      summary: actionPlan?.summary || '',
+    })
+    setSharedInteractions(getMentorInteractions())
+  }
+
+  const handleDeleteInteraction = (interactionId) => {
+    deleteMentorInteraction(interactionId)
+    setSharedInteractions(getMentorInteractions())
+  }
+
+  const handleClearMenteeInteractions = () => {
+    const rest = getMentorInteractions().filter((item) => item.menteeId !== currentMentee.id)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('itgo_mentor_interactions', JSON.stringify(rest))
+    }
+    setSharedInteractions(rest)
+  }
+
+  const handleCompleteSession = (sessionId) => {
+    setMentorSessionList((prev) => prev.map((s) => (s.id === sessionId ? { ...s, status: 'completed' } : s)))
+  }
+
+  const getLatestReservationForMentee = (menteeId, menteeName) => {
+    return reservationList.find((item) => (menteeId && item.menteeId === menteeId) || item.menteeName === menteeName)
+  }
+
+  const formatConcernText = (rawText) => {
+    const text = (rawText || '').trim()
+    if (!text) {
+      return {
+        lines: [],
+      }
+    }
+
+    const normalized = text
+      .replace(/\n-\s*/g, '\n')
+      .replace(/\s-\s/g, '\n')
+      .split('\n')
+      .map((line) => line.trim().replace(/^-+\s*/, ''))
+      .filter(Boolean)
+
+    if (normalized.length === 0) {
+      return {
+        lines: [],
+      }
+    }
+
+    return {
+      lines: normalized,
+    }
+  }
+
   const handleBookWithMentor = (mentor) => {
-    const defaultQuestion = ''
     const params = new URLSearchParams({
       duration: '30',
       prefillName: currentMentee.name,
-      aiQuestion: defaultQuestion,
+      aiQuestion: '',
       goal: currentMentee.goal,
       recommendedJob: analysisResult?.jobs?.[0]?.title || '',
       menteeId: currentMentee.id,
@@ -168,192 +253,25 @@ export default function MyPage() {
     navigate(`/booking/${mentor.id}?${params.toString()}`)
   }
 
-  const renderMenteePage = () => (
-    <>
-      <section className="grid lg:grid-cols-2 gap-4 mb-6">
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-card">
-          <h3 className="font-semibold text-navy-800 mb-3">기본 프로필</h3>
-          <div className="space-y-1.5 text-sm text-gray-700">
-            <p><span className="font-medium">이름:</span> {currentMentee.name}</p>
-            <p><span className="font-medium">유형:</span> {currentMentee.type}</p>
-            <p><span className="font-medium">현재 상태:</span> {currentMentee.status}</p>
-            <p><span className="font-medium">목표:</span> {currentMentee.goal}</p>
-          </div>
-        </div>
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-card">
-          <h3 className="font-semibold text-navy-800 mb-3">경험/강점</h3>
-          <div className="text-sm text-gray-700 space-y-2">
-            <p><span className="font-medium">전공:</span> {currentMentee.education}</p>
-            <p><span className="font-medium">활동 경험:</span> {currentMentee.experiences.join(', ')}</p>
-            <p><span className="font-medium">강점:</span> {currentMentee.strengths.join(', ')}</p>
-            <p><span className="font-medium">선호 업무:</span> {currentMentee.preferredWorkStyle.join(', ')}</p>
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-card mb-6">
-        <h3 className="font-semibold text-navy-800 mb-3">현재 고민</h3>
-        <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
-          {currentMentee.concerns.map((item) => <li key={item}>{item}</li>)}
-        </ul>
-        <p className="mt-3 text-xs text-gray-500">기피 업무 스타일: {currentMentee.avoidWorkStyle.join(', ')}</p>
-        <button
-          type="button"
-          onClick={handleStartPersonaAnalysis}
-          disabled={isAnalyzingPersona}
-          className="mt-4 px-3 py-2 rounded-lg text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-60"
-        >
-          {isAnalyzingPersona ? 'AI 진단 중...' : 'AI로 나의 상태 진단하기'}
-        </button>
-      </section>
-
-      {(isAnalyzingPersona || analysisResult) && (
-        <section className="rounded-2xl border border-primary-100 bg-primary-50/40 p-5 shadow-card mb-6">
-          <p className="text-xs font-medium text-primary-600 mb-1">AI 분석</p>
-          {isAnalyzingPersona || !analysisResult ? (
-            <p className="text-sm text-gray-600">AI가 입력된 경험과 고민을 분석하고 있습니다...</p>
-          ) : (
-            <>
-              <p className="text-sm text-gray-700">{analysisResult.personaInsight.summary}</p>
-              <p className="text-sm text-gray-700 mt-2">{analysisResult.personaInsight.judgement}</p>
-              <p className="text-sm text-gray-700 mt-1">{analysisResult.personaInsight.strengths}</p>
-
-              <div className="mt-4 grid md:grid-cols-3 gap-3">
-                {analysisResult.jobs.map((job) => (
-                  <div key={job.title} className="rounded-xl border border-primary-100 bg-white p-3">
-                    <p className="text-sm font-semibold text-navy-800">{job.title}</p>
-                    <p className="text-xs text-primary-600 mt-0.5">AI 적합도 {job.matchScore}%</p>
-                    <p className="text-xs text-gray-600 mt-1">{job.reason}</p>
-                    <ul className="mt-2 text-xs text-gray-600 list-disc list-inside">
-                      {job.preparation.map((prep) => <li key={prep}>{prep}</li>)}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </section>
-      )}
-
-      <section className="rounded-2xl border border-navy-100 bg-navy-50/30 p-5 shadow-card mb-6">
-        <p className="text-xs font-medium text-navy-600 mb-2">AI 추천</p>
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <h3 className="font-semibold text-navy-800">추천 멘토</h3>
-          <button
-            type="button"
-            onClick={handleGenerateMentorRecommendations}
-            disabled={isGeneratingMentorRecs}
-            className="px-3 py-2 rounded-lg text-sm font-medium bg-white text-navy-700 border border-navy-200 hover:bg-navy-50 disabled:opacity-60"
-          >
-            {isGeneratingMentorRecs ? 'AI 추천 중...' : 'AI를 통해 멘토 추천 받기'}
+  if (!userRole) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-12">
+        <div className="bg-white rounded-2xl p-8 border border-gray-100 shadow-card text-center">
+          <h1 className="text-xl font-bold text-navy-800">로그인이 필요합니다</h1>
+          <p className="mt-2 text-sm text-gray-500">멘티/멘토 역할을 선택해서 로그인하면 해당 마이페이지를 볼 수 있어요.</p>
+          <button type="button" onClick={() => navigate('/login')} className="mt-6 px-5 py-2.5 rounded-xl bg-primary-600 text-white font-medium hover:bg-primary-700">
+            로그인하러 가기
           </button>
         </div>
-        {(isGeneratingMentorRecs || mentorRecommendations.length > 0) && (
-          <div className="space-y-3">
-            {isGeneratingMentorRecs && <p className="text-sm text-gray-600">AI가 페르소나와 직무 적합도를 계산하고 있습니다...</p>}
-            {mentorRecommendations.map((mentor) => (
-              <div key={mentor.id} className="rounded-xl border border-gray-200 bg-white p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="font-semibold text-gray-800">{mentor.name} · {mentor.role}</p>
-                    <p className="text-xs text-gray-500">{mentor.company} · {mentor.careerYears}년차 · ★ {mentor.rating}</p>
-                  </div>
-                  <span className="px-2.5 py-1 rounded-full text-xs bg-primary-50 text-primary-700 border border-primary-100">
-                    AI 적합도 {mentor.matchScore}%
-                  </span>
-                </div>
-                <p className="mt-2 text-sm text-gray-600">{mentor.recommendationReason}</p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {mentor.tags.map((tag) => (
-                    <span key={tag} className="px-2 py-0.5 rounded-full text-xs bg-gray-50 border border-gray-200 text-gray-600">#{tag}</span>
-                  ))}
-                </div>
-                <div className="mt-3 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleBookWithMentor(mentor)}
-                    className="px-3 py-2 rounded-lg text-sm font-medium bg-primary-600 text-white hover:bg-primary-700"
-                  >
-                    상담 신청
-                  </button>
-                  <Link
-                    to={`/mentors/${mentor.id}`}
-                    className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-700 hover:bg-gray-50"
-                  >
-                    프로필 보기
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-card mb-6">
-        <div className="flex flex-wrap items-end justify-between gap-2 mb-3">
-          <div>
-            <h3 className="font-semibold text-navy-800">내 예약 신청 내역</h3>
-            <p className="text-xs text-gray-500 mt-0.5">신청한 예약 상태를 확인하고 필요 시 취소할 수 있어요.</p>
-          </div>
-          <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-primary-50 text-primary-700 border border-primary-100">
-            총 {reservationList.length}건
-          </span>
-        </div>
-        {reservationList.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center">
-            <p className="text-sm text-gray-500">아직 신청한 예약이 없습니다.</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {reservationList.map((item) => (
-              <div key={item.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <p className="text-base font-semibold text-gray-800">{item.mentorName} · {item.mentorRole}</p>
-                  <span className={`text-xs px-2.5 py-1 rounded-full border font-medium shrink-0 ${item.status === 'cancelled' ? 'bg-gray-100 text-gray-500 border-gray-200' : 'bg-primary-50 text-primary-700 border-primary-100'}`}>
-                    {item.status === 'cancelled' ? '취소됨' : '요청됨'}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">신청일 {new Date(item.createdAt).toLocaleString('ko-KR')}</p>
-                <p className="text-sm text-gray-600 mt-2 leading-relaxed">
-                  {item.concernText ? `질문 ${item.concernText.slice(0, 100)}${item.concernText.length > 100 ? '...' : ''}` : '질문 미입력'}
-                </p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {item.recommendedJob && (
-                    <span className="px-2 py-0.5 rounded-full text-xs bg-navy-50 text-navy-700 border border-navy-100">
-                      추천 직무 {item.recommendedJob}
-                    </span>
-                  )}
-                  {item.goals?.slice(0, 2).map((goal) => (
-                    <span key={goal} className="px-2 py-0.5 rounded-full text-xs bg-gray-50 text-gray-600 border border-gray-200">
-                      {goal}
-                    </span>
-                  ))}
-                </div>
-                {item.status !== 'cancelled' && (
-                  <div className="mt-3 flex justify-start">
-                    <button
-                      type="button"
-                      onClick={() => handleCancelReservation(item.id)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 text-red-600 hover:bg-red-50 whitespace-nowrap"
-                    >
-                      예약 취소
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-    </>
-  )
+      </div>
+    )
+  }
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
       <h1 className="text-xl font-bold text-navy-800 mb-2">마이페이지</h1>
-      <p className="text-sm text-gray-500 mb-6">{userRole === 'mentor'
-        ? '예정된 상담 준비와 상담 후 리포트를 관리할 수 있어요.'
-        : '페르소나 기반 AI 분석으로 직무·멘토·질문 추천을 확인할 수 있어요.'}
+      <p className="text-sm text-gray-500 mb-6">
+        {userRole === 'mentor' ? '예정된 상담 준비와 상담 후 리포트를 관리할 수 있어요.' : '페르소나 기반 AI 분석으로 직무·멘토·질문 추천을 확인할 수 있어요.'}
       </p>
 
       {justBooked && (
@@ -362,228 +280,302 @@ export default function MyPage() {
         </div>
       )}
 
-      {userRole === 'mentee' && renderMenteePage()}
+      {userRole === 'mentee' && (
+        <>
+          <section className="grid lg:grid-cols-2 gap-4 mb-6">
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-card">
+              <h3 className="font-semibold text-navy-800 mb-3">기본 프로필</h3>
+              <div className="space-y-1.5 text-sm text-gray-700">
+                <p><span className="font-medium">이름:</span> {currentMentee.name}</p>
+                <p><span className="font-medium">유형:</span> {currentMentee.type}</p>
+                <p><span className="font-medium">현재 상태:</span> {currentMentee.status}</p>
+                <p><span className="font-medium">목표:</span> {currentMentee.goal}</p>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-card">
+              <h3 className="font-semibold text-navy-800 mb-3">경험/강점</h3>
+              <div className="text-sm text-gray-700 space-y-2">
+                <p><span className="font-medium">전공:</span> {currentMentee.education}</p>
+                <p><span className="font-medium">활동 경험:</span> {currentMentee.experiences.join(', ')}</p>
+                <p><span className="font-medium">강점:</span> {currentMentee.strengths.join(', ')}</p>
+                <p><span className="font-medium">선호 업무:</span> {currentMentee.preferredWorkStyle.join(', ')}</p>
+              </div>
+            </div>
+          </section>
 
-      {userRole === 'mentor' && (
-      <>
-      {/* Tabs */}
-      <div className="flex gap-1 p-1 bg-gray-100 rounded-xl mb-8">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition ${activeTab === tab.id ? 'bg-white text-navy-800 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+          <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-card mb-6">
+            <h3 className="font-semibold text-navy-800 mb-3">현재 고민</h3>
+            <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
+              {currentMentee.concerns.map((item) => <li key={item}>{item}</li>)}
+            </ul>
+            <p className="mt-3 text-xs text-gray-500">기피 업무 스타일: {currentMentee.avoidWorkStyle.join(', ')}</p>
+            <button type="button" onClick={handleStartPersonaAnalysis} disabled={isAnalyzingPersona} className="mt-4 px-3 py-2 rounded-lg text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-60">
+              {isAnalyzingPersona ? 'AI 진단 중...' : 'AI로 나의 상태 진단하기'}
+            </button>
+          </section>
 
-      {/* Session list */}
-      <section className="mb-10">
-        <h2 className="font-semibold text-gray-800 mb-4">내 상담 현황</h2>
-        {listByTab.length === 0 ? (
-          <div className="bg-gray-50 rounded-2xl p-8 text-center text-gray-500 text-sm">
-            {activeTab === 'scheduled' && '예정된 상담이 없습니다.'}
-            {activeTab === 'completed' && '완료된 상담이 없습니다.'}
-            {activeTab === 'cancelled' && '취소된 상담이 없습니다.'}
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {listByTab.map((s) => (
-              <div
-                key={s.id}
-                className="bg-white rounded-2xl p-5 shadow-card border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-              >
-                <div className="flex gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-primary-100 flex items-center justify-center text-primary-600 font-bold">
-                    {(userRole === 'mentor' ? s.menteeName : s.mentorName)[0]}
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-800">{userRole === 'mentor' ? s.menteeName : s.mentorName}</p>
-                    <p className="text-sm text-gray-500">{s.role}</p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {s.date} {s.time} · {s.duration}분
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  {s.status === 'scheduled' && (
-                    <>
-                      {userRole === 'mentee' ? (
-                        <Link
-                          to={`/mentors/${s.mentorId}`}
-                          className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-700 hover:bg-gray-50"
-                        >
-                          상세 보기
-                        </Link>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => handleGeneratePreReport(s)}
-                            disabled={loadingId === `pre-${s.id}`}
-                            className="px-4 py-2 rounded-lg text-sm font-medium bg-primary-50 text-primary-700 hover:bg-primary-100 disabled:opacity-60"
-                          >
-                            {loadingId === `pre-${s.id}` ? 'AI 분석 중...' : '멘티 요약 리포트'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleGenerateGuide(s)}
-                            disabled={loadingId === `guide-${s.id}`}
-                            className="px-4 py-2 rounded-lg text-sm font-medium bg-navy-50 text-navy-700 hover:bg-navy-100 disabled:opacity-60"
-                          >
-                            {loadingId === `guide-${s.id}` ? 'AI 가이드 생성 중...' : '상담 진행 가이드'}
-                          </button>
-                        </>
-                      )}
-                    </>
-                  )}
-                  {s.status === 'completed' && (
-                    userRole === 'mentor' ? (
-                      <div className="w-full sm:w-auto space-y-2">
-                        <textarea
-                          value={sessionNotes[s.id] || ''}
-                          onChange={(e) => setSessionNotes((prev) => ({ ...prev, [s.id]: e.target.value }))}
-                          placeholder="상담 메모 키워드 입력 (예: 포트폴리오 구조, 면접 답변)"
-                          rows={2}
-                          className="w-full sm:w-64 px-3 py-2 rounded-lg border border-gray-200 text-sm"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleGeneratePostReport(s)}
-                          disabled={loadingId === `post-${s.id}`}
-                          className="px-4 py-2 rounded-lg text-sm font-medium bg-primary-50 text-primary-700 hover:bg-primary-100 disabled:opacity-60"
-                        >
-                          {loadingId === `post-${s.id}` ? 'AI 정리 중...' : '피드백/액션 정리'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleGenerateMentorActionPlan(s)}
-                          disabled={loadingId === `plan-${s.id}`}
-                          className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
-                        >
-                          {loadingId === `plan-${s.id}` ? 'AI 제안 중...' : '실행 목표 제안'}
-                        </button>
+          {(isAnalyzingPersona || analysisResult) && (
+            <section className="rounded-2xl border border-primary-100 bg-primary-50/40 p-5 shadow-card mb-6">
+              <p className="text-xs font-medium text-primary-600 mb-1">AI 분석</p>
+              {isAnalyzingPersona || !analysisResult ? (
+                <p className="text-sm text-gray-600">AI가 입력된 경험과 고민을 분석하고 있습니다...</p>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-700">{analysisResult.personaInsight.summary}</p>
+                  <p className="text-sm text-gray-700 mt-2">{analysisResult.personaInsight.judgement}</p>
+                  <p className="text-sm text-gray-700 mt-1">{analysisResult.personaInsight.strengths}</p>
+                  <div className="mt-4 grid md:grid-cols-3 gap-3">
+                    {analysisResult.jobs.map((job) => (
+                      <div key={job.title} className="rounded-xl border border-primary-100 bg-white p-3">
+                        <p className="text-sm font-semibold text-navy-800">{job.title}</p>
+                        <p className="text-xs text-primary-600 mt-0.5">AI 적합도 {job.matchScore}%</p>
+                        <p className="text-xs text-gray-600 mt-1">{job.reason}</p>
                       </div>
-                    ) : (
-                      <span className="px-4 py-2 rounded-lg text-sm font-medium bg-primary-50 text-primary-700">
-                        상담 완료
-                      </span>
-                    )
-                  )}
-                </div>
-
-                {userRole === 'mentor' && preReports[s.id] && (
-                  <div className="w-full mt-2 rounded-xl border border-primary-100 bg-primary-50/40 p-3 text-sm text-gray-700">
-                    <p className="font-medium text-primary-700">멘티 요약 리포트</p>
-                    <p className="mt-1">{preReports[s.id].summary}</p>
-                    <ul className="mt-2 list-disc list-inside text-xs text-gray-600">
-                      {preReports[s.id].keyNeeds.map((need) => <li key={need}>{need}</li>)}
-                    </ul>
-                    <p className="mt-1 text-xs text-gray-500">리스크: {preReports[s.id].riskPoint}</p>
+                    ))}
                   </div>
-                )}
+                </>
+              )}
+            </section>
+          )}
 
-                {userRole === 'mentor' && guideReports[s.id] && (
-                  <div className="w-full mt-2 rounded-xl border border-navy-100 bg-navy-50/40 p-3 text-sm text-gray-700">
-                    <p className="font-medium text-navy-700">상담 진행 가이드</p>
-                    <div className="mt-1 space-y-1">
-                      {guideReports[s.id].map((guide) => (
-                        <p key={guide.step} className="text-xs text-gray-600">
-                          <span className="font-medium">{guide.step}</span> - {guide.guide}
-                        </p>
-                      ))}
+          <section className="rounded-2xl border border-navy-100 bg-navy-50/30 p-5 shadow-card mb-6">
+            <p className="text-xs font-medium text-navy-600 mb-2">AI 추천</p>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h3 className="font-semibold text-navy-800">추천 멘토</h3>
+              <button type="button" onClick={handleGenerateMentorRecommendations} disabled={isGeneratingMentorRecs} className="px-3 py-2 rounded-lg text-sm font-medium bg-white text-navy-700 border border-navy-200 hover:bg-navy-50 disabled:opacity-60">
+                {isGeneratingMentorRecs ? 'AI 추천 중...' : 'AI를 통해 멘토 추천 받기'}
+              </button>
+            </div>
+            {(isGeneratingMentorRecs || mentorRecommendations.length > 0) && (
+              <div className="space-y-3">
+                {mentorRecommendations.map((mentor) => (
+                  <div key={mentor.id} className="rounded-xl border border-gray-200 bg-white p-4">
+                    <p className="font-semibold text-gray-800">{mentor.name} · {mentor.role}</p>
+                    <p className="text-xs text-gray-500">{mentor.company} · {mentor.careerYears}년차 · ★ {mentor.rating}</p>
+                    <p className="mt-2 text-sm text-gray-600">{mentor.recommendationReason}</p>
+                    <div className="mt-3 flex gap-2">
+                      <button type="button" onClick={() => handleBookWithMentor(mentor)} className="px-3 py-2 rounded-lg text-sm font-medium bg-primary-600 text-white hover:bg-primary-700">상담 신청</button>
+                      <Link to={`/mentors/${mentor.id}`} className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-700 hover:bg-gray-50">프로필 보기</Link>
                     </div>
                   </div>
-                )}
-
-                {userRole === 'mentor' && postReports[s.id] && (
-                  <div className="w-full mt-2 rounded-xl border border-emerald-100 bg-emerald-50/40 p-3 text-sm text-gray-700">
-                    <p className="font-medium text-emerald-700">상담 후 정리 보조</p>
-                    <p className="mt-1 text-xs">{postReports[s.id].feedback}</p>
-                    <ul className="mt-2 list-disc list-inside text-xs text-gray-600">
-                      {postReports[s.id].actionItems.map((item) => <li key={item}>{item}</li>)}
-                    </ul>
-                  </div>
-                )}
-                {userRole === 'mentor' && mentorActionPlans[s.id] && (
-                  <div className="w-full mt-2 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-sm text-gray-700">
-                    <p className="font-medium text-emerald-700">AI 실행 목표 제안</p>
-                    <p className="mt-1 text-xs text-gray-600">{mentorActionPlans[s.id].summary}</p>
-                    <ul className="mt-2 list-disc list-inside text-xs text-gray-600">
-                      {mentorActionPlans[s.id].actions.map((action) => (
-                        <li key={action.period}>{action.period} - {action.item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-      </section>
+            )}
+          </section>
 
-      {/* Saved mentors */}
-      {userRole === 'mentee' && (
-        <section>
-          <h2 className="font-semibold text-gray-800 mb-4">관심 멘토</h2>
-          <p className="text-sm text-gray-500 mb-4">저장해 둔 멘토 목록이에요. 언제든 상담을 신청할 수 있어요.</p>
-          {savedMentors.length === 0 ? (
-            <div className="bg-gray-50 rounded-2xl p-8 text-center text-gray-500 text-sm">
-              저장한 멘토가 없습니다. 멘토 찾기에서 관심 있는 멘토를 저장해 보세요.
-            </div>
-          ) : (
-            <div className="grid sm:grid-cols-2 gap-4">
-              {savedMentors.map((m) => (
-                <Link
-                  key={m.id}
-                  to={`/mentors/${m.id}`}
-                  className="flex gap-3 p-4 bg-white rounded-2xl shadow-card border border-gray-100 hover:shadow-cardHover transition"
+          <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-card mb-6">
+            <h3 className="font-semibold text-navy-800 mb-3">내 예약 신청 내역</h3>
+            {reservationList.length === 0 ? <p className="text-sm text-gray-500">아직 신청한 예약이 없습니다.</p> : (
+              <div className="space-y-3">
+                {reservationList.map((item) => (
+                  <div key={item.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                    <p className="text-base font-semibold text-gray-800">{item.mentorName} · {item.mentorRole}</p>
+                    <p className="text-sm text-gray-600 mt-2">{item.concernText ? `질문 ${item.concernText.slice(0, 100)}${item.concernText.length > 100 ? '...' : ''}` : '질문 미입력'}</p>
+                    <div className="mt-3 flex justify-start">
+                      <button type="button" onClick={() => handleCancelReservation(item.id)} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 text-red-600 hover:bg-red-50 whitespace-nowrap">예약 취소</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {sharedInteractions.filter((i) => i.menteeId === currentMentee.id).length > 0 && (
+            <section className="rounded-2xl border border-emerald-100 bg-emerald-50/30 p-5 shadow-card mb-6">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="font-semibold text-navy-800">멘토 피드백/액션 공유함</h3>
+                <button
+                  type="button"
+                  onClick={handleClearMenteeInteractions}
+                  className="px-2.5 py-1 rounded-lg text-xs font-medium border border-red-200 text-red-600 hover:bg-red-50"
                 >
-                  <div className="w-12 h-12 rounded-xl bg-primary-100 flex items-center justify-center text-primary-600 font-bold flex-shrink-0">
-                    {m.name[0]}
+                  전체 삭제
+                </button>
+              </div>
+              <div className="space-y-3 mt-3">
+                {sharedInteractions.filter((i) => i.menteeId === currentMentee.id).map((item) => (
+                  <div key={item.id} className="rounded-xl border border-emerald-100 bg-white p-4">
+                    <p className="text-sm font-semibold text-gray-800">{item.mentorName}님이 보낸 액션 제안</p>
+                    {item.feedback && <p className="mt-2 text-sm text-gray-700">{item.feedback}</p>}
+                    {item.summary && <p className="mt-1 text-xs text-gray-500">{item.summary}</p>}
+                    {item.actionItems?.length > 0 && (
+                      <ul className="mt-2 list-disc list-inside text-xs text-gray-600">
+                        {item.actionItems.map((action) => <li key={action}>{action}</li>)}
+                      </ul>
+                    )}
+                    {!item.read && (
+                      <button type="button" onClick={() => { markInteractionRead(item.id); setSharedInteractions(getMentorInteractions()) }} className="mt-3 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-700 hover:bg-gray-50">
+                        확인 완료
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteInteraction(item.id)}
+                      className="mt-3 ml-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 text-red-600 hover:bg-red-50"
+                    >
+                      삭제
+                    </button>
                   </div>
-                  <div className="min-w-0">
-                    <p className="font-medium text-gray-800">{m.name}</p>
-                    <p className="text-sm text-gray-500">{m.role} · {m.company}</p>
-                    <p className="text-sm text-primary-600 font-medium mt-1">상담 신청 →</p>
-                  </div>
-                </Link>
-              ))}
-            </div>
+                ))}
+              </div>
+            </section>
           )}
-        </section>
+        </>
       )}
 
       {userRole === 'mentor' && (
-      <section className="mt-10">
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <h2 className="font-semibold text-gray-800">AI 수익·운영 리포트</h2>
-          <button
-            type="button"
-            onClick={handleGenerateOpsReport}
-            disabled={isOpsGenerating}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-primary-50 text-primary-700 border border-primary-100 hover:bg-primary-100 disabled:opacity-60"
-          >
-            {isOpsGenerating ? 'AI 리포트 생성 중...' : '운영 리포트 생성'}
-          </button>
-        </div>
-        {opsReport && (
-          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-card">
-            <div className="grid sm:grid-cols-4 gap-3 text-sm">
-              <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">총 상담</p><p className="font-semibold text-navy-800">{opsReport.total}건</p></div>
-              <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">완료율</p><p className="font-semibold text-navy-800">{opsReport.completedRate}%</p></div>
-              <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">평균 평점</p><p className="font-semibold text-navy-800">★ {opsReport.avgRating}</p></div>
-              <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">예상 수익</p><p className="font-semibold text-navy-800">{opsReport.expectedRevenue.toLocaleString()}원</p></div>
-            </div>
-            <p className="mt-3 text-xs text-gray-600">AI 인사이트: {opsReport.insight}</p>
+        <>
+          <div className="flex gap-1 p-1 bg-gray-100 rounded-xl mb-8">
+            {TABS.map((tab) => (
+              <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition ${activeTab === tab.id ? 'bg-white text-navy-800 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>
+                {tab.label}
+              </button>
+            ))}
           </div>
-        )}
-      </section>
-      )}
-      </>
+
+          <section className="mb-10">
+            <h2 className="font-semibold text-gray-800 mb-4">내 상담 현황</h2>
+            {listByTab.length === 0 ? <p className="text-sm text-gray-500">예정된 상담이 없습니다.</p> : (
+              <div className="space-y-4">
+                {listByTab.map((s) => {
+                  const latestReservation = getLatestReservationForMentee(s.menteeId, s.menteeName)
+                  const formattedConcern = formatConcernText(latestReservation?.concernText)
+                  const mappedMentee = s.menteeId ? getMenteePersonaById(s.menteeId) : null
+                  const menteeProfile = mappedMentee?.id === s.menteeId ? mappedMentee : null
+                  return (
+                  <div key={s.id} className="bg-white rounded-2xl p-5 shadow-card border border-gray-100">
+                    <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50/70 p-3">
+                      <p className="text-xs font-medium text-gray-500">상담 일정</p>
+                      <p className="mt-1 text-sm font-medium text-gray-800">
+                        {s.date} {s.time} · {s.duration}분
+                      </p>
+                      {latestReservation?.slot && (
+                        <p className="mt-1 text-xs text-gray-600">멘티가 선택한 희망 시간: {latestReservation.slot}</p>
+                      )}
+                    </div>
+
+                    <div className="mb-3 rounded-xl border border-primary-100 bg-primary-50/40 p-3">
+                      <p className="text-sm font-medium text-primary-700">멘티 프로필 요약</p>
+                      <div className="mt-2 grid md:grid-cols-2 gap-2 text-xs text-gray-700">
+                        <p><span className="font-medium">이름:</span> {s.menteeName}</p>
+                        <p><span className="font-medium">유형:</span> {menteeProfile?.type || s.role || '정보 없음'}</p>
+                        <p><span className="font-medium">현재 상태:</span> {menteeProfile?.status || '정보 없음'}</p>
+                        <p><span className="font-medium">목표:</span> {menteeProfile?.goal || '정보 없음'}</p>
+                        <p><span className="font-medium">전공:</span> {menteeProfile?.education || '정보 없음'}</p>
+                        <p><span className="font-medium">관심 분야:</span> {menteeProfile?.interests?.join(', ') || '정보 없음'}</p>
+                      </div>
+                    </div>
+
+                    {preReports[s.id] && (
+                      <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3 text-sm text-gray-700">
+                        <p className="font-medium text-primary-700">멘티 요약 리포트</p>
+                        <p className="mt-1">{preReports[s.id].summary}</p>
+                      </div>
+                    )}
+
+                    {latestReservation && (
+                      <div className="w-full mt-2 rounded-xl border border-gray-200 bg-gray-50/80 p-4 text-sm text-gray-700">
+                        <p className="font-medium text-gray-900">상담 요청 내용</p>
+                        {formattedConcern.lines.length > 0 ? (
+                          <ul className="mt-2 list-disc list-inside space-y-1 text-sm text-gray-700">
+                            {formattedConcern.lines.map((line) => (
+                              <li key={line}>{line}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="mt-2 text-sm text-gray-500">멘티가 전달한 상담 요청 내용이 없습니다.</p>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="w-full mt-2 rounded-xl border border-navy-100 bg-navy-50/30 p-3 text-sm text-gray-700">
+                      <p className="font-medium text-navy-700">간단 상담 가이드</p>
+                      <ul className="mt-2 list-disc list-inside space-y-1 text-xs text-gray-600">
+                        <li>오프닝 5분 - 멘티의 핵심 고민 1순위와 오늘 상담 목표를 짧게 정렬합니다.</li>
+                        <li>진단 10분 - 사전 질문 {Math.min((latestReservation?.questionSelections || []).length || formattedConcern.lines.length, 3)}개를 중심으로 경험/역량/목표 갭을 확인합니다.</li>
+                        <li>솔루션 10분 - 오늘 바로 실행 가능한 액션 2개를 정하고 우선순위를 확정합니다.</li>
+                        <li>마무리 5분 - 다음 점검 시점과 확인 지표를 합의하고 상담을 종료합니다.</li>
+                      </ul>
+                    </div>
+
+                    {guideReports[s.id] && (
+                      <div className="w-full mt-2 rounded-xl border border-navy-100 bg-navy-50/40 p-3 text-sm text-gray-700">
+                        <p className="font-medium text-navy-700">상담 진행 가이드</p>
+                        {guideReports[s.id].map((guide) => (
+                          <p key={guide.step} className="text-xs text-gray-600"><span className="font-medium">{guide.step}</span> - {guide.guide}</p>
+                        ))}
+                      </div>
+                    )}
+
+                    {s.status === 'completed' && (
+                      <div className="mt-2">
+                        <textarea value={sessionNotes[s.id] || ''} onChange={(e) => setSessionNotes((prev) => ({ ...prev, [s.id]: e.target.value }))} rows={2} className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm" placeholder="상담 메모 키워드 입력" />
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button type="button" onClick={() => handleGenerateMentorActionPlan(s)} disabled={loadingId === `plan-${s.id}`} className="px-3 py-2 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">{loadingId === `plan-${s.id}` ? 'AI 정리 중...' : '피드백/실행 가이드'}</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {mentorActionPlans[s.id] && (
+                      <div className="w-full mt-2 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-sm text-gray-700">
+                        <p className="font-medium text-emerald-700">AI 피드백/실행 가이드</p>
+                        {mentorActionPlans[s.id].feedback && (
+                          <p className="mt-1 text-xs text-gray-700">{mentorActionPlans[s.id].feedback}</p>
+                        )}
+                        {editingPlanSessionId === s.id ? (
+                          <div className="mt-2 space-y-2">
+                            <textarea value={editingPlanSummary} onChange={(e) => setEditingPlanSummary(e.target.value)} rows={2} className="w-full px-3 py-2 rounded-lg border border-emerald-200 bg-white text-xs text-gray-700" />
+                            <textarea value={editingPlanActionsText} onChange={(e) => setEditingPlanActionsText(e.target.value)} rows={4} className="w-full px-3 py-2 rounded-lg border border-emerald-200 bg-white text-xs text-gray-700" />
+                            <div className="flex gap-2 justify-end">
+                              <button type="button" onClick={handleCancelEditActionPlan} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-50">취소</button>
+                              <button type="button" onClick={() => handleSaveActionPlan(s.id)} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-700">수정 저장</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <p className="mt-1 text-xs text-gray-600">{mentorActionPlans[s.id].summary}</p>
+                            <ul className="mt-2 list-disc list-inside text-xs text-gray-600">
+                              {mentorActionPlans[s.id].actions.map((action) => <li key={`${action.period}-${action.item}`}>{action.period} - {action.item}</li>)}
+                            </ul>
+                            <div className="mt-2 flex justify-end">
+                              <button type="button" onClick={() => handleStartEditActionPlan(s.id)} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-emerald-200 text-emerald-700 hover:bg-emerald-100">수정하기</button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {s.status === 'scheduled' && (
+                      <div className="w-full mt-2 flex flex-wrap gap-2">
+                        <button type="button" onClick={() => handleCompleteSession(s.id)} className="px-3 py-2 rounded-lg text-xs font-medium bg-emerald-600 text-white">상담 완료 처리</button>
+                      </div>
+                    )}
+
+                    {mentorActionPlans[s.id] && (
+                      <div className="w-full mt-2 flex justify-end">
+                        <button type="button" onClick={() => handleShareMentorAction(s)} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-primary-600 text-white hover:bg-primary-700">멘티에게 액션 공유</button>
+                      </div>
+                    )}
+                  </div>
+                )})}
+              </div>
+            )}
+          </section>
+
+          <section className="mt-10">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h2 className="font-semibold text-gray-800">AI 수익·운영 리포트</h2>
+              <button type="button" onClick={handleGenerateOpsReport} disabled={isOpsGenerating} className="px-4 py-2 rounded-lg text-sm font-medium bg-primary-50 text-primary-700 border border-primary-100 hover:bg-primary-100 disabled:opacity-60">
+                {isOpsGenerating ? 'AI 리포트 생성 중...' : '운영 리포트 생성'}
+              </button>
+            </div>
+            {opsReport && (
+              <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-card">
+                <p className="text-sm text-gray-600">AI 인사이트: {opsReport.insight}</p>
+              </div>
+            )}
+          </section>
+        </>
       )}
     </div>
   )
