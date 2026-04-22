@@ -112,13 +112,73 @@ export function recommendMentorsForMentee({ concern = '', goals = [] }) {
 
 export function buildExecutionPlan({ concern = '', goals = [] }) {
   const focus = goals.length ? goals[0] : '직무 이해'
+  const noteLines = (concern || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const keywordToAction = [
+    {
+      match: (text) => text.includes('공백기'),
+      action: { period: '1주', item: '공백기 설명용 STAR 예시 2개 정리 및 자기소개 문장 3개 작성' },
+    },
+    {
+      match: (text) => text.includes('포트폴리오'),
+      action: { period: '1주', item: '포트폴리오 주제 2개 확정 후 목차/산출물 구조 1차 작성' },
+    },
+    {
+      match: (text) => text.includes('면접'),
+      action: { period: '2주', item: '예상 면접 질문 5개 답변 스크립트 작성 및 1회 리허설' },
+    },
+    {
+      match: (text) => text.includes('이력서') || text.includes('자소서'),
+      action: { period: '2주', item: '이력서/자기소개서 핵심 문장 개선 후 멘토 피드백 1회 반영' },
+    },
+    {
+      match: (text) => text.includes('지원 일정') || text.includes('일정'),
+      action: { period: '3주', item: '3주 지원 캘린더 작성 및 주간 점검 루틴(주 1회) 실행' },
+    },
+    {
+      match: (text) => text.includes('자신감'),
+      action: { period: '3주', item: '작은 성공경험 과제 2개 실행 후 성과/학습 포인트 기록' },
+    },
+  ]
+
+  const customizedActions = noteLines
+    .map((line) => keywordToAction.find((rule) => rule.match(line))?.action)
+    .filter(Boolean)
+
+  const uniqueActions = Array.from(
+    new Map(customizedActions.map((action) => [`${action.period}-${action.item}`, action])).values()
+  ).slice(0, 3)
+
+  const fallbackActions = [
+    { period: '1주', item: `${focus} 관련 정보 3개 조사 후 인사이트 정리` },
+    { period: '2주', item: '멘토 피드백 반영해 이력서/포트폴리오 초안 1회 개선' },
+    { period: '1개월', item: '모의 면접 또는 실전 지원 2회 실행 후 회고 작성' },
+  ]
+
+  const periodOrder = {
+    '1주': 1,
+    '2주': 2,
+    '3주': 3,
+    '4주': 4,
+    '1개월': 5,
+  }
+
+  const sortedActions = (uniqueActions.length > 0 ? uniqueActions : fallbackActions).slice()
+    .sort((a, b) => {
+      const aOrder = periodOrder[a.period] || 99
+      const bOrder = periodOrder[b.period] || 99
+      if (aOrder !== bOrder) return aOrder - bOrder
+      return a.item.localeCompare(b.item, 'ko')
+    })
+
   return {
-    summary: concern ? `현재 고민의 핵심은 "${concern.slice(0, 28)}${concern.length > 28 ? '...' : ''}" 입니다.` : '입력한 목표를 기준으로 실행 계획을 제안합니다.',
-    actions: [
-      { period: '1주', item: `${focus} 관련 정보 3개 조사 후 인사이트 정리` },
-      { period: '2주', item: '멘토 피드백 반영해 이력서/포트폴리오 초안 1회 개선' },
-      { period: '1개월', item: '모의 면접 또는 실전 지원 2회 실행 후 회고 작성' },
-    ],
+    summary: concern
+      ? `상담 메모의 핵심 키워드(${noteLines.length || 1}개)를 기반으로 실행 우선순위를 구성했습니다.`
+      : '입력한 목표를 기준으로 실행 계획을 제안합니다.',
+    actions: sortedActions,
     reminderOptions: ['매주 월요일 오전 9시', '매주 수요일 오후 8시', '매주 금요일 오전 10시'],
   }
 }
@@ -185,14 +245,40 @@ export function suggestCounselingGuide(input = '일반') {
 }
 
 export function buildPostSessionOutput(note = '') {
-  return {
-    feedback: note ? `상담 메모 기반 핵심 피드백: ${note}` : '상담 요약: 목표 대비 준비 우선순위를 명확히 한 점이 좋습니다.',
-    actionItems: [
-      '핵심 목표 1개 선정 후 주간 단위 체크',
-      '포트폴리오/이력서 항목 1회 업데이트',
-      '다음 상담 전 사전 질문 3개 준비',
-    ],
-  }
+  const lines = (note || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const focusKeywords = []
+  if (note.includes('공백기')) focusKeywords.push('공백기 설명 보완')
+  if (note.includes('포트폴리오')) focusKeywords.push('포트폴리오 구조화')
+  if (note.includes('면접')) focusKeywords.push('면접 답변 고도화')
+  if (note.includes('이력서') || note.includes('자소서')) focusKeywords.push('지원 문서 개선')
+  if (note.includes('일정')) focusKeywords.push('지원 일정 관리')
+  if (note.includes('자신감')) focusKeywords.push('자신감 회복 루틴')
+
+  const diagnosis = note
+    ? `멘티는 ${focusKeywords[0] || '직무 방향성 정렬'} 이슈가 우선이며, 현재 상태와 목표 사이의 갭을 줄이기 위한 단기 실행이 필요한 상태입니다.`
+    : '멘티는 목표 대비 준비 우선순위를 명확히 정리할 필요가 있습니다.'
+
+  const feedback = note
+    ? `상담 메모 ${lines.length}개 항목을 분석해 우선순위를 ${focusKeywords.join(', ') || '직무 방향성 정렬'}로 설정했습니다. 이번 주에는 범위를 좁혀 결과물을 남기는 방식으로 진행합니다.`
+    : '상담에서 합의한 방향을 기준으로 작은 단위 실행부터 시작하는 것이 좋습니다.'
+
+  const actionItems = lines.length > 0
+    ? lines.slice(0, 3).map((line, idx) => `${idx + 1}) ${line} -> 이번 주 실행 과제로 전환`)
+    : [
+        '핵심 목표 1개 선정 후 주간 단위 체크',
+        '포트폴리오/이력서 항목 1회 업데이트',
+        '다음 상담 전 사전 질문 3개 준비',
+      ]
+
+  const nextFollowUp = note
+    ? '다음 상담에서 실행 과제 완료 여부, 결과물 품질, 지원 일정 진행률을 함께 점검합니다.'
+    : '다음 상담에서 실행 과제 진행률과 보완 포인트를 점검합니다.'
+
+  return { diagnosis, feedback, actionItems, nextFollowUp }
 }
 
 export function buildMentorOpsReport(sessions = []) {

@@ -59,9 +59,9 @@ export default function MyPage() {
   const [mentorRecommendations, setMentorRecommendations] = useState([])
   const [reservationList, setReservationList] = useState(() => getReservations().filter((item) => item.status !== 'cancelled'))
   const [mentorActionPlans, setMentorActionPlans] = useState({})
+  const [shareDoneBySession, setShareDoneBySession] = useState({})
   const [editingPlanSessionId, setEditingPlanSessionId] = useState(null)
-  const [editingPlanSummary, setEditingPlanSummary] = useState('')
-  const [editingPlanActionsText, setEditingPlanActionsText] = useState('')
+  const [editingPlanText, setEditingPlanText] = useState('')
   const [sharedInteractions, setSharedInteractions] = useState(() => getMentorInteractions())
   const [mentorSessionList, setMentorSessionList] = useState(mentorSessions)
 
@@ -139,7 +139,9 @@ export default function MyPage() {
         ...prev,
         [session.id]: {
           ...summary,
+          diagnosis: postSummary.diagnosis,
           feedback: postSummary.feedback,
+          nextFollowUp: postSummary.nextFollowUp,
         },
       }))
       setLoadingId('')
@@ -150,33 +152,61 @@ export default function MyPage() {
     const plan = mentorActionPlans[sessionId]
     if (!plan) return
     setEditingPlanSessionId(sessionId)
-    setEditingPlanSummary(plan.summary || '')
-    setEditingPlanActionsText((plan.actions || []).map((a) => `${a.period} - ${a.item}`).join('\n'))
+    const mergedText = [
+      `핵심 진단: ${plan.diagnosis || ''}`,
+      `피드백 정리: ${plan.feedback || ''}`,
+      `요약: ${plan.summary || ''}`,
+      '실행 과제:',
+      ...(plan.actions || []).map((a) => `- ${a.period} - ${a.item}`),
+      `다음 상담 연결: ${plan.nextFollowUp || ''}`,
+    ].join('\n')
+    setEditingPlanText(mergedText)
   }
 
   const handleSaveActionPlan = (sessionId) => {
-    const lines = editingPlanActionsText.split('\n').map((line) => line.trim()).filter(Boolean)
-    const parsedActions = lines.map((line, idx) => {
-      const splitIdx = line.indexOf(' - ')
-      if (splitIdx > -1) {
-        return { period: line.slice(0, splitIdx).trim(), item: line.slice(splitIdx + 3).trim() }
-      }
-      return { period: `단계 ${idx + 1}`, item: line }
-    })
+    const lines = editingPlanText.split('\n').map((line) => line.trim()).filter(Boolean)
+    const readField = (prefix) => {
+      const line = lines.find((item) => item.startsWith(prefix))
+      return line ? line.replace(prefix, '').trim() : ''
+    }
+    const diagnosis = readField('핵심 진단:')
+    const feedback = readField('피드백 정리:')
+    const summary = readField('요약:')
+    const nextFollowUp = readField('다음 상담 연결:')
+
+    const actionStartIdx = lines.findIndex((line) => line.startsWith('실행 과제'))
+    const actionLines = actionStartIdx > -1
+      ? lines.slice(actionStartIdx + 1).filter((line) => line.startsWith('-'))
+      : []
+    const parsedActions = actionLines.length > 0
+      ? actionLines.map((line, idx) => {
+        const cleaned = line.replace(/^-+\s*/, '')
+        const splitIdx = cleaned.indexOf(' - ')
+        if (splitIdx > -1) {
+          return { period: cleaned.slice(0, splitIdx).trim(), item: cleaned.slice(splitIdx + 3).trim() }
+        }
+        return { period: `단계 ${idx + 1}`, item: cleaned }
+      })
+      : (mentorActionPlans[sessionId]?.actions || [])
 
     setMentorActionPlans((prev) => ({
       ...prev,
-      [sessionId]: { ...prev[sessionId], summary: editingPlanSummary, actions: parsedActions },
+      [sessionId]: {
+        ...prev[sessionId],
+        diagnosis,
+        feedback,
+        summary,
+        nextFollowUp,
+        actions: parsedActions,
+      },
     }))
     setEditingPlanSessionId(null)
-    setEditingPlanSummary('')
-    setEditingPlanActionsText('')
+    setEditingPlanText('')
   }
 
   const handleCancelEditActionPlan = () => {
     setEditingPlanSessionId(null)
-    setEditingPlanSummary('')
-    setEditingPlanActionsText('')
+    setEditingPlanText('')
   }
 
   const handleShareMentorAction = (session) => {
@@ -187,11 +217,12 @@ export default function MyPage() {
       mentorName: '김민수 멘토',
       menteeId: session.menteeId || 'mentee-001',
       menteeName: session.menteeName,
-      feedback: actionPlan?.feedback || '',
+      feedback: [actionPlan?.diagnosis, actionPlan?.feedback].filter(Boolean).join('\n'),
       actionItems: actionPlan?.actions?.map((a) => `${a.period} - ${a.item}`) || [],
-      summary: actionPlan?.summary || '',
+      summary: [actionPlan?.summary, actionPlan?.nextFollowUp].filter(Boolean).join('\n'),
     })
     setSharedInteractions(getMentorInteractions())
+    setShareDoneBySession((prev) => ({ ...prev, [session.id]: true }))
   }
 
   const handleDeleteInteraction = (interactionId) => {
@@ -488,15 +519,27 @@ export default function MyPage() {
                       </div>
                     )}
 
-                    <div className="w-full mt-2 rounded-xl border border-navy-100 bg-navy-50/30 p-3 text-sm text-gray-700">
-                      <p className="font-medium text-navy-700">간단 상담 가이드</p>
-                      <ul className="mt-2 list-disc list-inside space-y-1 text-xs text-gray-600">
-                        <li>오프닝 5분 - 멘티의 핵심 고민 1순위와 오늘 상담 목표를 짧게 정렬합니다.</li>
-                        <li>진단 10분 - 사전 질문 {Math.min((latestReservation?.questionSelections || []).length || formattedConcern.lines.length, 3)}개를 중심으로 경험/역량/목표 갭을 확인합니다.</li>
-                        <li>솔루션 10분 - 오늘 바로 실행 가능한 액션 2개를 정하고 우선순위를 확정합니다.</li>
-                        <li>마무리 5분 - 다음 점검 시점과 확인 지표를 합의하고 상담을 종료합니다.</li>
-                      </ul>
-                    </div>
+                    {s.status === 'scheduled' ? (
+                      <div className="w-full mt-2 rounded-xl border border-navy-100 bg-navy-50/30 p-3 text-sm text-gray-700">
+                        <p className="font-medium text-navy-700">간단 상담 가이드</p>
+                        <ul className="mt-2 list-disc list-inside space-y-1 text-xs text-gray-600">
+                          <li>오프닝 5분 - 멘티의 핵심 고민 1순위와 오늘 상담 목표를 짧게 정렬합니다.</li>
+                          <li>진단 10분 - 사전 질문 {Math.min((latestReservation?.questionSelections || []).length || formattedConcern.lines.length, 3)}개를 중심으로 경험/역량/목표 갭을 확인합니다.</li>
+                          <li>솔루션 10분 - 오늘 바로 실행 가능한 액션 2개를 정하고 우선순위를 확정합니다.</li>
+                          <li>마무리 5분 - 다음 점검 시점과 확인 지표를 합의하고 상담을 종료합니다.</li>
+                        </ul>
+                      </div>
+                    ) : (
+                      <div className="w-full mt-2 rounded-xl border border-violet-100 bg-violet-50/40 p-3 text-sm text-gray-700">
+                        <p className="font-medium text-violet-700">상담 후 리포트 작성 가이드</p>
+                        <ul className="mt-2 list-disc list-inside space-y-1 text-xs text-gray-600">
+                          <li>핵심 진단 - 멘티의 현재 상태/문제 원인을 2~3줄로 요약합니다.</li>
+                          <li>피드백 정리 - 상담 중 합의된 방향과 보완 포인트를 우선순위로 적습니다.</li>
+                          <li>실행 과제 - 이번 주 바로 할 일 2~3개를 기한과 함께 명확히 적습니다.</li>
+                          <li>다음 상담 연결 - 점검 시점, 확인 지표, 다음 질문을 한 줄로 남깁니다.</li>
+                        </ul>
+                      </div>
+                    )}
 
                     {guideReports[s.id] && (
                       <div className="w-full mt-2 rounded-xl border border-navy-100 bg-navy-50/40 p-3 text-sm text-gray-700">
@@ -519,13 +562,26 @@ export default function MyPage() {
                     {mentorActionPlans[s.id] && (
                       <div className="w-full mt-2 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-sm text-gray-700">
                         <p className="font-medium text-emerald-700">AI 피드백/실행 가이드</p>
+                        {mentorActionPlans[s.id].diagnosis && (
+                          <p className="mt-2 text-xs text-gray-700">
+                            <span className="font-medium text-gray-800">핵심 진단 - </span>
+                            {mentorActionPlans[s.id].diagnosis}
+                          </p>
+                        )}
                         {mentorActionPlans[s.id].feedback && (
-                          <p className="mt-1 text-xs text-gray-700">{mentorActionPlans[s.id].feedback}</p>
+                          <p className="mt-1 text-xs text-gray-700 whitespace-pre-line leading-relaxed">
+                            <span className="font-medium text-gray-800">피드백 정리 - </span>
+                            {mentorActionPlans[s.id].feedback}
+                          </p>
                         )}
                         {editingPlanSessionId === s.id ? (
                           <div className="mt-2 space-y-2">
-                            <textarea value={editingPlanSummary} onChange={(e) => setEditingPlanSummary(e.target.value)} rows={2} className="w-full px-3 py-2 rounded-lg border border-emerald-200 bg-white text-xs text-gray-700" />
-                            <textarea value={editingPlanActionsText} onChange={(e) => setEditingPlanActionsText(e.target.value)} rows={4} className="w-full px-3 py-2 rounded-lg border border-emerald-200 bg-white text-xs text-gray-700" />
+                            <textarea
+                              value={editingPlanText}
+                              onChange={(e) => setEditingPlanText(e.target.value)}
+                              rows={12}
+                              className="w-full px-3 py-2 rounded-lg border border-emerald-200 bg-white text-xs text-gray-700 leading-relaxed"
+                            />
                             <div className="flex gap-2 justify-end">
                               <button type="button" onClick={handleCancelEditActionPlan} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-50">취소</button>
                               <button type="button" onClick={() => handleSaveActionPlan(s.id)} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-700">수정 저장</button>
@@ -533,10 +589,16 @@ export default function MyPage() {
                           </div>
                         ) : (
                           <>
-                            <p className="mt-1 text-xs text-gray-600">{mentorActionPlans[s.id].summary}</p>
-                            <ul className="mt-2 list-disc list-inside text-xs text-gray-600">
+                            <p className="mt-2 text-xs font-medium text-gray-800">실행 과제</p>
+                            <ul className="mt-1 list-disc list-inside text-xs text-gray-600">
                               {mentorActionPlans[s.id].actions.map((action) => <li key={`${action.period}-${action.item}`}>{action.period} - {action.item}</li>)}
                             </ul>
+                            {mentorActionPlans[s.id].nextFollowUp && (
+                              <p className="mt-2 text-xs text-gray-700">
+                                <span className="font-medium text-gray-800">다음 상담 연결 - </span>
+                                {mentorActionPlans[s.id].nextFollowUp}
+                              </p>
+                            )}
                             <div className="mt-2 flex justify-end">
                               <button type="button" onClick={() => handleStartEditActionPlan(s.id)} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-emerald-200 text-emerald-700 hover:bg-emerald-100">수정하기</button>
                             </div>
@@ -555,6 +617,9 @@ export default function MyPage() {
                       <div className="w-full mt-2 flex justify-end">
                         <button type="button" onClick={() => handleShareMentorAction(s)} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-primary-600 text-white hover:bg-primary-700">멘티에게 액션 공유</button>
                       </div>
+                    )}
+                    {shareDoneBySession[s.id] && (
+                      <p className="mt-2 text-xs text-emerald-700">공유가 완료되었습니다.</p>
                     )}
                   </div>
                 )})}
