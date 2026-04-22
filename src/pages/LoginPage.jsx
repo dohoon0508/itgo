@@ -14,7 +14,7 @@ export default function LoginPage() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-card p-8">
         <h1 className="text-2xl font-bold text-navy-800">로그인</h1>
         <p className="mt-2 text-sm text-gray-500">
-          프로토타입 데모용 로그인입니다. 역할을 선택해 진입해 주세요.
+          역할을 선택해 맞춤형 상담 서비스를 이용해 보세요.
         </p>
 
         <div className="mt-8 grid sm:grid-cols-2 gap-3">

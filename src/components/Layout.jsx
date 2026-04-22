@@ -40,7 +40,7 @@ export default function Layout({ children }) {
               to="/mypage"
               className={`px-3 py-2 rounded-lg text-sm font-medium transition ${isActive('/mypage') ? 'text-primary-600 bg-primary-50' : 'text-gray-600 hover:bg-gray-50'}`}
             >
-              상담내역
+              마이페이지
             </Link>
             {authUser ? (
               <button

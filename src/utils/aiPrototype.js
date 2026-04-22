@@ -186,3 +186,74 @@ export function buildMentorOpsReport(sessions = []) {
     insight: '저녁 시간대(19:00~21:00) 상담 전환율이 높아 해당 슬롯 확장을 추천합니다.',
   }
 }
+
+function normalizeCategoryFromInterest(interest = '') {
+  if (interest.includes('기획')) return 'planning'
+  if (interest.includes('마케팅')) return 'marketing'
+  if (interest.includes('개발')) return 'dev'
+  if (interest.includes('디자인')) return 'design'
+  if (interest.includes('데이터')) return 'data'
+  if (interest.includes('채용') || interest.includes('hr')) return 'hr'
+  return 'planning'
+}
+
+export function analyzeMenteePersona(persona) {
+  return {
+    summary: persona.aiSummary,
+    judgement: '현재 사용자는 진로 재탐색 단계로 판단됩니다.',
+    strengths: `${persona.strengths.join(', ')} 강점을 기반으로 실행 가능한 직무 탐색이 유리합니다.`,
+  }
+}
+
+export function recommendJobsByPersona(persona) {
+  return persona.recommendedJobs
+}
+
+export function calculateMentorMatchScore(mentee, mentor) {
+  let score = 50
+  const interestCategories = (mentee.interests || []).map(normalizeCategoryFromInterest)
+  if (interestCategories.includes(mentor.category)) score += 40
+
+  const concernText = (mentee.concerns || []).join(' ')
+  const concernKeywords = ['포트폴리오', '취업', '직무', '공백기', '면접']
+  const tagMatches = mentor.tags.filter((tag) =>
+    concernKeywords.some((keyword) => concernText.includes(keyword) && (tag.includes(keyword) || keyword.includes(tag)))
+  ).length
+  if (tagMatches > 0) score += 20
+
+  if (mentor.rating >= 4.8) score += 10
+  if (mentor.reviewCount >= 20) score += 5
+
+  if (mentor.tags.some((tag) => ['포트폴리오', '취업', 'PM취업', '개발자취업'].some((k) => tag.includes(k)))) {
+    score += 8
+  }
+
+  return Math.min(score, 98)
+}
+
+export function recommendMentorsByPersona(persona) {
+  return mentors
+    .map((mentor) => {
+      const matchScore = calculateMentorMatchScore(persona, mentor)
+      return {
+        ...mentor,
+        matchScore,
+        recommendationReason:
+          `${persona.name}님의 관심 직무(${persona.interests.join(', ')})와 멘토의 상담 분야가 잘 맞고, ` +
+          `상담 태그(${mentor.tags.join(', ')})가 현재 고민과 연결되어 추천합니다.`,
+      }
+    })
+    .sort((a, b) => b.matchScore - a.matchScore)
+    .slice(0, 3)
+}
+
+export function generateQuestionsForPersona({ persona, mentor }) {
+  const base = persona.generatedQuestions || []
+  if (!mentor) return base
+
+  const mentorSpecific = [
+    `${mentor.name} 멘토님, ${mentor.role} 관점에서 제가 ${persona.goal} 목표를 달성하려면 어떤 준비 순서로 시작하는 것이 좋을까요?`,
+    `${mentor.name} 멘토님, 제 강점(${persona.strengths.join(', ')})을 ${mentor.role} 지원서와 면접에서 어떻게 강조하면 좋을까요?`,
+  ]
+  return [...base.slice(0, 3), ...mentorSpecific].slice(0, 4)
+}

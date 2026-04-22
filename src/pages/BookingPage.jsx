@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { mentors } from '../data/mentors'
+import { getMenteePersonaById } from '../data/mentees'
 import {
   getMentorQuestionTemplates,
   recommendCareerPaths,
@@ -21,13 +22,19 @@ export default function BookingPage() {
   const navigate = useNavigate()
   const duration = parseInt(searchParams.get('duration') || '30', 10)
   const slot = decodeURIComponent(searchParams.get('slot') || '')
+  const prefillName = decodeURIComponent(searchParams.get('prefillName') || '')
+  const prefillQuestion = decodeURIComponent(searchParams.get('aiQuestion') || '')
+  const prefillGoal = decodeURIComponent(searchParams.get('goal') || '')
+  const prefillRecommendedJob = decodeURIComponent(searchParams.get('recommendedJob') || '')
+  const prefillMenteeId = decodeURIComponent(searchParams.get('menteeId') || '')
+  const currentMentee = prefillMenteeId ? getMenteePersonaById(prefillMenteeId) : null
 
   const mentor = mentors.find((m) => m.id === id)
-  const [name, setName] = useState('')
+  const [name, setName] = useState(prefillName || '')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
-  const [concern, setConcern] = useState('')
-  const [goals, setGoals] = useState([])
+  const [concern, setConcern] = useState(prefillQuestion || '')
+  const [goals, setGoals] = useState(prefillGoal ? [prefillGoal] : [])
   const [aiExampleIndex, setAiExampleIndex] = useState(null)
   const [major, setMajor] = useState('')
   const [experience, setExperience] = useState('')
@@ -119,6 +126,15 @@ export default function BookingPage() {
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
       <h1 className="text-xl font-bold text-navy-800 mb-2">상담 예약</h1>
       <p className="text-sm text-gray-500 mb-8">멘토에게 전달할 정보를 입력해 주세요.</p>
+
+      {(prefillQuestion || prefillRecommendedJob || currentMentee) && (
+        <div className="mb-6 rounded-2xl border border-primary-100 bg-primary-50/60 p-4">
+          <p className="text-xs font-medium text-primary-600 mb-1">AI 추천 연동</p>
+          {currentMentee && <p className="text-sm text-gray-700">멘티: {currentMentee.name} · {currentMentee.type}</p>}
+          {prefillRecommendedJob && <p className="text-sm text-gray-700">추천 직무: {prefillRecommendedJob}</p>}
+          {prefillGoal && <p className="text-sm text-gray-700">상담 목표: {prefillGoal}</p>}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-8">
         <div className="bg-white rounded-2xl p-6 shadow-card border border-gray-100">
