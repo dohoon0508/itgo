@@ -60,6 +60,7 @@ export default function MyPage() {
   const [reservationList, setReservationList] = useState(() => getReservations().filter((item) => item.status !== 'cancelled'))
   const [mentorActionPlans, setMentorActionPlans] = useState({})
   const [shareDoneBySession, setShareDoneBySession] = useState({})
+  const [shareToastMessage, setShareToastMessage] = useState('')
   const [editingPlanSessionId, setEditingPlanSessionId] = useState(null)
   const [editingPlanText, setEditingPlanText] = useState('')
   const [sharedInteractions, setSharedInteractions] = useState(() => getMentorInteractions())
@@ -223,6 +224,10 @@ export default function MyPage() {
     })
     setSharedInteractions(getMentorInteractions())
     setShareDoneBySession((prev) => ({ ...prev, [session.id]: true }))
+    setShareToastMessage('멘티에게 액션이 공유되었습니다.')
+    setTimeout(() => {
+      setShareToastMessage('')
+    }, 1800)
   }
 
   const handleDeleteInteraction = (interactionId) => {
@@ -300,6 +305,11 @@ export default function MyPage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+      {shareToastMessage && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-navy-800 text-white text-sm shadow-lg">
+          {shareToastMessage}
+        </div>
+      )}
       <h1 className="text-xl font-bold text-navy-800 mb-2">마이페이지</h1>
       <p className="text-sm text-gray-500 mb-6">
         {userRole === 'mentor' ? '예정된 상담 준비와 상담 후 리포트를 관리할 수 있어요.' : '페르소나 기반 AI 분석으로 직무·멘토·질문 추천을 확인할 수 있어요.'}
