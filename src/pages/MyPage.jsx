@@ -5,12 +5,14 @@ import {
   suggestCounselingGuide,
   buildPostSessionOutput,
   buildMentorOpsReport,
+  buildExecutionPlan,
   analyzeMenteePersona,
   recommendJobsByPersona,
   recommendMentorsByPersona,
 } from '../utils/aiPrototype'
 import { getAuthUser } from '../utils/auth'
 import { getMenteePersonaById } from '../data/mentees'
+import { cancelReservation, getReservations } from '../utils/reservations'
 
 const TABS = [
   { id: 'scheduled', label: '예정' },
@@ -49,6 +51,10 @@ export default function MyPage() {
   const [analysisResult, setAnalysisResult] = useState(null)
   const [isGeneratingMentorRecs, setIsGeneratingMentorRecs] = useState(false)
   const [mentorRecommendations, setMentorRecommendations] = useState([])
+  const [reservationList, setReservationList] = useState(() =>
+    getReservations().filter((item) => item.status !== 'cancelled')
+  )
+  const [mentorActionPlans, setMentorActionPlans] = useState({})
 
   const sourceSessions = userRole === 'mentor' ? mentorSessions : menteeSessions
   const scheduled = sourceSessions.filter((s) => s.status === 'scheduled')
@@ -132,8 +138,25 @@ export default function MyPage() {
     })
   }
 
+  const handleCancelReservation = (reservationId) => {
+    cancelReservation(reservationId)
+    setReservationList(getReservations().filter((item) => item.status !== 'cancelled'))
+  }
+
+  const handleGenerateMentorActionPlan = (session) => {
+    setLoadingId(`plan-${session.id}`)
+    waitAi().then(() => {
+      const summary = buildExecutionPlan({
+        concern: sessionNotes[session.id] || `${session.menteeName} 멘티 상담 후속 액션`,
+        goals: ['준비 방향'],
+      })
+      setMentorActionPlans((prev) => ({ ...prev, [session.id]: summary }))
+      setLoadingId('')
+    })
+  }
+
   const handleBookWithMentor = (mentor) => {
-    const defaultQuestion = currentMentee.generatedQuestions?.[0] || `${mentor.name} 멘토님, 현재 제 상태에서 가장 먼저 해야 할 준비를 알려주세요.`
+    const defaultQuestion = ''
     const params = new URLSearchParams({
       duration: '30',
       prefillName: currentMentee.name,
@@ -265,6 +288,63 @@ export default function MyPage() {
           </div>
         )}
       </section>
+
+      <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-card mb-6">
+        <div className="flex flex-wrap items-end justify-between gap-2 mb-3">
+          <div>
+            <h3 className="font-semibold text-navy-800">내 예약 신청 내역</h3>
+            <p className="text-xs text-gray-500 mt-0.5">신청한 예약 상태를 확인하고 필요 시 취소할 수 있어요.</p>
+          </div>
+          <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-primary-50 text-primary-700 border border-primary-100">
+            총 {reservationList.length}건
+          </span>
+        </div>
+        {reservationList.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center">
+            <p className="text-sm text-gray-500">아직 신청한 예약이 없습니다.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {reservationList.map((item) => (
+              <div key={item.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-base font-semibold text-gray-800">{item.mentorName} · {item.mentorRole}</p>
+                  <span className={`text-xs px-2.5 py-1 rounded-full border font-medium shrink-0 ${item.status === 'cancelled' ? 'bg-gray-100 text-gray-500 border-gray-200' : 'bg-primary-50 text-primary-700 border-primary-100'}`}>
+                    {item.status === 'cancelled' ? '취소됨' : '요청됨'}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">신청일 {new Date(item.createdAt).toLocaleString('ko-KR')}</p>
+                <p className="text-sm text-gray-600 mt-2 leading-relaxed">
+                  {item.concernText ? `질문 ${item.concernText.slice(0, 100)}${item.concernText.length > 100 ? '...' : ''}` : '질문 미입력'}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {item.recommendedJob && (
+                    <span className="px-2 py-0.5 rounded-full text-xs bg-navy-50 text-navy-700 border border-navy-100">
+                      추천 직무 {item.recommendedJob}
+                    </span>
+                  )}
+                  {item.goals?.slice(0, 2).map((goal) => (
+                    <span key={goal} className="px-2 py-0.5 rounded-full text-xs bg-gray-50 text-gray-600 border border-gray-200">
+                      {goal}
+                    </span>
+                  ))}
+                </div>
+                {item.status !== 'cancelled' && (
+                  <div className="mt-3 flex justify-start">
+                    <button
+                      type="button"
+                      onClick={() => handleCancelReservation(item.id)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 text-red-600 hover:bg-red-50 whitespace-nowrap"
+                    >
+                      예약 취소
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </>
   )
 
@@ -378,6 +458,14 @@ export default function MyPage() {
                         >
                           {loadingId === `post-${s.id}` ? 'AI 정리 중...' : '피드백/액션 정리'}
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => handleGenerateMentorActionPlan(s)}
+                          disabled={loadingId === `plan-${s.id}`}
+                          className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                        >
+                          {loadingId === `plan-${s.id}` ? 'AI 제안 중...' : '실행 목표 제안'}
+                        </button>
                       </div>
                     ) : (
                       <span className="px-4 py-2 rounded-lg text-sm font-medium bg-primary-50 text-primary-700">
@@ -417,6 +505,17 @@ export default function MyPage() {
                     <p className="mt-1 text-xs">{postReports[s.id].feedback}</p>
                     <ul className="mt-2 list-disc list-inside text-xs text-gray-600">
                       {postReports[s.id].actionItems.map((item) => <li key={item}>{item}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {userRole === 'mentor' && mentorActionPlans[s.id] && (
+                  <div className="w-full mt-2 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-sm text-gray-700">
+                    <p className="font-medium text-emerald-700">AI 실행 목표 제안</p>
+                    <p className="mt-1 text-xs text-gray-600">{mentorActionPlans[s.id].summary}</p>
+                    <ul className="mt-2 list-disc list-inside text-xs text-gray-600">
+                      {mentorActionPlans[s.id].actions.map((action) => (
+                        <li key={action.period}>{action.period} - {action.item}</li>
+                      ))}
                     </ul>
                   </div>
                 )}

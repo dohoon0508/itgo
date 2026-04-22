@@ -2,18 +2,15 @@ import { useState } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { mentors } from '../data/mentors'
 import { getMenteePersonaById } from '../data/mentees'
-import {
-  getMentorQuestionTemplates,
-  recommendCareerPaths,
-  recommendMentorsForMentee,
-  buildExecutionPlan,
-} from '../utils/aiPrototype'
+import { getMentorQuestionTemplates } from '../utils/aiPrototype'
+import { addReservation } from '../utils/reservations'
 
 const GOAL_OPTIONS = [
   '직무 이해',
   '준비 방향',
   '포트폴리오 피드백',
   '이직 고민',
+  '기타',
 ]
 
 export default function BookingPage() {
@@ -28,24 +25,18 @@ export default function BookingPage() {
   const prefillRecommendedJob = decodeURIComponent(searchParams.get('recommendedJob') || '')
   const prefillMenteeId = decodeURIComponent(searchParams.get('menteeId') || '')
   const currentMentee = prefillMenteeId ? getMenteePersonaById(prefillMenteeId) : null
+  const profileConcernSeeds = currentMentee?.concerns || []
+  const initialQuestionPool = [...new Set([...(prefillQuestion ? [prefillQuestion] : []), ...profileConcernSeeds])]
 
   const mentor = mentors.find((m) => m.id === id)
   const [name, setName] = useState(prefillName || '')
-  const [phone, setPhone] = useState('')
-  const [email, setEmail] = useState('')
-  const [concern, setConcern] = useState(prefillQuestion || '')
+  const [phone, setPhone] = useState('010-1234-5678')
+  const [email, setEmail] = useState('mentee@example.com')
+  const [selectedQuestions, setSelectedQuestions] = useState(initialQuestionPool)
+  const [customConcern, setCustomConcern] = useState('')
   const [goals, setGoals] = useState(prefillGoal ? [prefillGoal] : [])
-  const [aiExampleIndex, setAiExampleIndex] = useState(null)
-  const [major, setMajor] = useState('')
-  const [experience, setExperience] = useState('')
-  const [interest, setInterest] = useState('')
-  const [careerRecommendations, setCareerRecommendations] = useState([])
-  const [mentorRecommendations, setMentorRecommendations] = useState([])
-  const [executionPlan, setExecutionPlan] = useState(null)
+  const [generatedQuestions, setGeneratedQuestions] = useState(initialQuestionPool)
   const [isGeneratingQuestion, setIsGeneratingQuestion] = useState(false)
-  const [isGeneratingCareer, setIsGeneratingCareer] = useState(false)
-  const [isGeneratingMentorRec, setIsGeneratingMentorRec] = useState(false)
-  const [isGeneratingPlan, setIsGeneratingPlan] = useState(false)
 
   if (!mentor) {
     return (
@@ -62,64 +53,54 @@ export default function BookingPage() {
     setGoals((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]))
   }
 
+  const concernText = [...selectedQuestions, customConcern.trim()].filter(Boolean).join('\n- ')
   const mentorTemplates = getMentorQuestionTemplates(mentor)
   const waitAi = () => new Promise((resolve) => setTimeout(resolve, 1000))
 
   const handleGenerateAiQuestion = () => {
     setIsGeneratingQuestion(true)
     waitAi().then(() => {
-      const nextIndex =
-        aiExampleIndex === null ? 0 : (aiExampleIndex + 1) % mentorTemplates.length
-      setAiExampleIndex(nextIndex)
-      setConcern(mentorTemplates[nextIndex])
+      const relationshipQuestions = [
+        `${mentor.name} 멘토님, 제 현재 고민(${(currentMentee?.concerns || []).slice(0, 2).join(', ')})을 고려했을 때 ${mentor.role} 기준으로 우선순위를 어떻게 잡아야 할까요?`,
+        `${mentor.name} 멘토님, 제 목표가 "${currentMentee?.goal || '직무 방향 설정'}"인데 지금 단계에서 가장 먼저 검증해야 할 준비 항목은 무엇인가요?`,
+      ]
+      const list = [
+        ...new Set([
+          ...generatedQuestions,
+          ...mentorTemplates,
+          ...relationshipQuestions,
+        ]),
+      ].slice(0, 8)
+      setGeneratedQuestions(list)
+      if (!selectedQuestions.length) {
+        setSelectedQuestions(list.slice(0, 2))
+      }
       setIsGeneratingQuestion(false)
     })
   }
 
-  const handleGenerateCareerRecommendation = () => {
-    setIsGeneratingCareer(true)
-    waitAi().then(() => {
-      setCareerRecommendations(
-        recommendCareerPaths({
-          major,
-          experience,
-          interest,
-        })
-      )
-      setIsGeneratingCareer(false)
-    })
-  }
-
-  const handleGenerateMentorRecommendation = () => {
-    setIsGeneratingMentorRec(true)
-    waitAi().then(() => {
-      setMentorRecommendations(
-        recommendMentorsForMentee({
-          concern,
-          goals,
-        })
-      )
-      setIsGeneratingMentorRec(false)
-    })
-  }
-
-  const handleGenerateExecutionPlan = () => {
-    setIsGeneratingPlan(true)
-    waitAi().then(() => {
-      setExecutionPlan(
-        buildExecutionPlan({
-          concern,
-          goals,
-        })
-      )
-      setIsGeneratingPlan(false)
-    })
+  const toggleQuestion = (question) => {
+    setSelectedQuestions((prev) =>
+      prev.includes(question) ? prev.filter((q) => q !== question) : [...prev, question]
+    )
   }
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    // 프로토타입: 제출 후 마이페이지로
-    navigate('/mypage?booked=1')
+    const reservation = addReservation({
+      menteeName: name,
+      mentorId: mentor.id,
+      mentorName: mentor.name,
+      mentorRole: mentor.role,
+      duration,
+      slot,
+      goals,
+      recommendedJob: prefillRecommendedJob,
+      concernText,
+      questionSelections: selectedQuestions,
+      customConcern,
+    })
+    navigate(`/booking-complete?reservationId=${reservation.id}&mentorName=${encodeURIComponent(mentor.name)}`)
   }
 
   return (
@@ -139,6 +120,7 @@ export default function BookingPage() {
       <form onSubmit={handleSubmit} className="space-y-8">
         <div className="bg-white rounded-2xl p-6 shadow-card border border-gray-100">
           <h2 className="font-semibold text-gray-800 mb-4">신청자 정보</h2>
+          <p className="text-xs text-gray-500 mb-4">기본 정보는 자동 입력되며 필요 시 수정할 수 있습니다.</p>
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">이름</label>
@@ -175,12 +157,30 @@ export default function BookingPage() {
 
         <div className="bg-white rounded-2xl p-6 shadow-card border border-gray-100">
           <h2 className="font-semibold text-gray-800 mb-2">고민 내용</h2>
-          <p className="text-sm text-gray-500 mb-3">
-            어떤 고민이 있는지 작성해 주세요. 멘토가 미리 파악하고 상담에 반영합니다.
-          </p>
+          <p className="text-sm text-gray-500 mb-4">나의 고민과 AI 질문을 선택하고, 직접 작성 내용을 추가해 주세요.</p>
+
+          {profileConcernSeeds.length > 0 && (
+            <div className="mb-5">
+              <p className="text-sm font-semibold text-navy-800 mb-2">나의 고민</p>
+              <div className="space-y-2">
+                {profileConcernSeeds.map((question, index) => (
+                  <label key={`seed-${question}`} className="flex items-start gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={selectedQuestions.includes(question)}
+                      onChange={() => toggleQuestion(question)}
+                      className="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    />
+                    <span>{index + 1}. {question}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col gap-3 mb-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs sm:text-sm text-gray-500">
-              <span className="font-medium text-primary-600">{mentor.name}</span> 멘토님께 할 질문이 막막하다면, 버튼을 누르면 멘토 직무·상담 주제에 맞춰 자동으로 질문 문장을 만들어 드려요.
+              <span className="font-medium text-primary-600">{mentor.name}</span> 멘토님과 나의 상태를 함께 고려해 상담 질문을 생성합니다.
             </p>
             <button
               type="button"
@@ -188,16 +188,39 @@ export default function BookingPage() {
               disabled={isGeneratingQuestion}
               className="inline-flex items-center justify-center px-3 py-2 rounded-lg text-xs sm:text-sm font-medium bg-primary-50 text-primary-700 hover:bg-primary-100 border border-primary-100 transition"
             >
-              {isGeneratingQuestion ? 'AI 문장 생성 중...' : '멘토에게 할 질문 자동 생성'}
+              {isGeneratingQuestion ? 'AI 질문 생성 중...' : 'AI 질문 자동 생성'}
             </button>
           </div>
+
+          {generatedQuestions.length > 0 && (
+            <div className="space-y-2 mb-3">
+              {generatedQuestions.filter((question) => !profileConcernSeeds.includes(question)).map((question, index) => (
+                <label key={question} className="flex items-start gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={selectedQuestions.includes(question)}
+                    onChange={() => toggleQuestion(question)}
+                    className="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  <span>{index + 1}. {question}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          <p className="text-sm font-semibold text-navy-800 mb-2">직접 작성</p>
           <textarea
-            value={concern}
-            onChange={(e) => setConcern(e.target.value)}
-            placeholder="예: 기획 직무로 취업을 준비 중인데, 포트폴리오 구성과 실무 역량을 어떻게 쌓으면 좋을지 조언이 필요합니다."
+            value={customConcern}
+            onChange={(e) => setCustomConcern(e.target.value)}
+            placeholder="추가로 멘토에게 꼭 전달하고 싶은 고민/질문을 자유롭게 입력해 주세요."
             rows={4}
             className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none resize-none"
           />
+          <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
+            <p className="text-xs font-medium text-gray-600 mb-1">전달 예정 내용 미리보기</p>
+            <p className="text-sm text-gray-700 whitespace-pre-line">
+              {concernText ? `- ${concernText}` : '아직 선택/입력된 고민 내용이 없습니다.'}
+            </p>
+          </div>
         </div>
 
         <div className="bg-white rounded-2xl p-6 shadow-card border border-gray-100">
@@ -218,114 +241,6 @@ export default function BookingPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-6 shadow-card border border-gray-100 space-y-5">
-          <h2 className="font-semibold text-gray-800">AI 직무/멘토 추천</h2>
-          <p className="text-sm text-gray-500">전공·경험·관심사를 입력하면 추천 직무와 멘토를 제안해 드립니다.</p>
-          <div className="grid sm:grid-cols-3 gap-3">
-            <input
-              type="text"
-              value={major}
-              onChange={(e) => setMajor(e.target.value)}
-              placeholder="전공 (예: 경영학)"
-              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none"
-            />
-            <input
-              type="text"
-              value={experience}
-              onChange={(e) => setExperience(e.target.value)}
-              placeholder="경험 (예: 공모전, 인턴)"
-              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none"
-            />
-            <input
-              type="text"
-              value={interest}
-              onChange={(e) => setInterest(e.target.value)}
-              placeholder="관심사 (예: 데이터, 서비스)"
-              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none"
-            />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={handleGenerateCareerRecommendation}
-              disabled={isGeneratingCareer}
-              className="px-3 py-2 rounded-lg text-sm font-medium bg-primary-50 text-primary-700 border border-primary-100 hover:bg-primary-100 disabled:opacity-60"
-            >
-              {isGeneratingCareer ? 'AI 분석 중...' : '직무/산업군 추천'}
-            </button>
-            <button
-              type="button"
-              onClick={handleGenerateMentorRecommendation}
-              disabled={isGeneratingMentorRec}
-              className="px-3 py-2 rounded-lg text-sm font-medium bg-navy-50 text-navy-700 border border-navy-100 hover:bg-navy-100 disabled:opacity-60"
-            >
-              {isGeneratingMentorRec ? 'AI 매칭 중...' : '적합 멘토 추천'}
-            </button>
-          </div>
-
-          {careerRecommendations.length > 0 && (
-            <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-4">
-              <p className="text-sm font-semibold text-primary-700 mb-2">추천 직무/산업군</p>
-              <div className="space-y-2">
-                {careerRecommendations.map((item) => (
-                  <div key={`${item.category}-${item.role}`} className="text-sm text-gray-700">
-                    <span className="font-medium">{item.role}</span> · {item.industry}
-                    <p className="text-xs text-gray-500 mt-0.5">{item.reason}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {mentorRecommendations.length > 0 && (
-            <div className="rounded-xl border border-navy-100 bg-navy-50/40 p-4">
-              <p className="text-sm font-semibold text-navy-700 mb-2">추천 멘토 TOP 3</p>
-              <div className="space-y-2">
-                {mentorRecommendations.map((item) => (
-                  <div key={item.id} className="text-sm text-gray-700">
-                    <span className="font-medium">{item.rank}위 {item.name}</span> · {item.role}
-                    <p className="text-xs text-gray-500 mt-0.5">{item.reason}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 shadow-card border border-gray-100 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="font-semibold text-gray-800">AI 실행 목표 설정</h2>
-              <p className="text-sm text-gray-500">상담 후 바로 실천할 1주/2주/1개월 액션을 제안합니다.</p>
-            </div>
-            <button
-              type="button"
-              onClick={handleGenerateExecutionPlan}
-              disabled={isGeneratingPlan}
-              className="px-3 py-2 rounded-lg text-sm font-medium bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 disabled:opacity-60"
-            >
-              {isGeneratingPlan ? 'AI 계획 생성 중...' : '실행 목표 생성'}
-            </button>
-          </div>
-
-          {executionPlan && (
-            <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4">
-              <p className="text-sm text-gray-700">{executionPlan.summary}</p>
-              <div className="mt-3 space-y-1.5">
-                {executionPlan.actions.map((action) => (
-                  <label key={action.period} className="flex items-start gap-2 text-sm text-gray-700">
-                    <input type="checkbox" className="mt-1 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
-                    <span><span className="font-medium">{action.period}</span> - {action.item}</span>
-                  </label>
-                ))}
-              </div>
-              <p className="mt-3 text-xs text-gray-500">
-                추천 점검 시간: {executionPlan.reminderOptions.join(' / ')}
-              </p>
-            </div>
-          )}
-        </div>
-
         <div className="bg-primary-50 rounded-2xl p-6 border border-primary-100">
           <h2 className="font-semibold text-gray-800 mb-4">예약 요약</h2>
           <div className="space-y-2 text-sm">
@@ -341,6 +256,12 @@ export default function BookingPage() {
               <span className="text-gray-600">상담 유형</span>
               <span className="font-medium text-gray-800">{duration}분</span>
             </div>
+            {prefillRecommendedJob && (
+              <div className="flex justify-between">
+                <span className="text-gray-600">추천 직무</span>
+                <span className="font-medium text-gray-800">{prefillRecommendedJob}</span>
+              </div>
+            )}
             <div className="flex justify-between pt-2 border-t border-primary-200">
               <span className="text-gray-600">결제 금액</span>
               <span className="font-bold text-navy-800">{price.toLocaleString()}원</span>

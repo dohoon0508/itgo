@@ -8,6 +8,7 @@ import MyPage from './pages/MyPage'
 import MentorRegisterPage from './pages/MentorRegisterPage'
 import DemoReportPage from './pages/DemoReportPage'
 import LoginPage from './pages/LoginPage'
+import BookingCompletePage from './pages/BookingCompletePage'
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="/mentors" element={<MentorListPage />} />
         <Route path="/mentors/:id" element={<MentorDetailPage />} />
         <Route path="/booking/:id" element={<BookingPage />} />
+        <Route path="/booking-complete" element={<BookingCompletePage />} />
         <Route path="/mypage" element={<MyPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/mentor-register" element={<MentorRegisterPage />} />
