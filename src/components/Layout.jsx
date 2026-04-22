@@ -1,8 +1,19 @@
-import { Link, useLocation } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { getAuthUser, logout, onAuthChange } from '../utils/auth'
 
 export default function Layout({ children }) {
   const location = useLocation()
+  const navigate = useNavigate()
+  const [authUser, setAuthUser] = useState(getAuthUser())
   const isActive = (path) => location.pathname === path
+
+  useEffect(() => onAuthChange(() => setAuthUser(getAuthUser())), [])
+
+  const handleLogout = () => {
+    logout()
+    navigate('/')
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -29,14 +40,24 @@ export default function Layout({ children }) {
               to="/mypage"
               className={`px-3 py-2 rounded-lg text-sm font-medium transition ${isActive('/mypage') ? 'text-primary-600 bg-primary-50' : 'text-gray-600 hover:bg-gray-50'}`}
             >
-              상담내역
+              마이페이지
             </Link>
-            <Link
-              to="/mypage"
-              className="ml-1 sm:ml-2 px-4 py-2 rounded-lg text-sm font-medium bg-navy-700 text-white hover:bg-navy-800 transition"
-            >
-              로그인
-            </Link>
+            {authUser ? (
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="ml-1 sm:ml-2 px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition"
+              >
+                로그아웃
+              </button>
+            ) : (
+              <Link
+                to="/login"
+                className="ml-1 sm:ml-2 px-4 py-2 rounded-lg text-sm font-medium bg-navy-700 text-white hover:bg-navy-800 transition"
+              >
+                로그인
+              </Link>
+            )}
           </nav>
         </div>
       </header>
