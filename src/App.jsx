@@ -6,8 +6,8 @@ import MentorDetailPage from './pages/MentorDetailPage'
 import BookingPage from './pages/BookingPage'
 import MyPage from './pages/MyPage'
 import MentorRegisterPage from './pages/MentorRegisterPage'
-import DemoReportPage from './pages/DemoReportPage'
 import LoginPage from './pages/LoginPage'
+import DemoReportPage from './pages/DemoReportPage'
 import BookingCompletePage from './pages/BookingCompletePage'
 
 export default function App() {
@@ -15,7 +15,7 @@ export default function App() {
     <Layout>
       <Routes>
         <Route path="/" element={<LandingPage />} />
-        <Route path="/demo" element={<DemoReportPage />} />
+        <Route path="/customer-center" element={<DemoReportPage />} />
         <Route path="/mentors" element={<MentorListPage />} />
         <Route path="/mentors/:id" element={<MentorDetailPage />} />
         <Route path="/booking/:id" element={<BookingPage />} />
