@@ -72,7 +72,9 @@ export default function Layout({ children }) {
             <div className="flex flex-wrap gap-6 text-sm text-gray-500">
               <a href="#!" className="hover:text-gray-700">이용약관</a>
               <a href="#!" className="hover:text-gray-700">개인정보처리방침</a>
-              <a href="#!" className="hover:text-gray-700">고객센터</a>
+              <Link to="/customer-center" className="hover:text-gray-700">
+                고객센터
+              </Link>
             </div>
           </div>
           <p className="text-xs text-gray-400 mt-6">© 2025 잇고(IT GO). 프로토타입 버전입니다.</p>

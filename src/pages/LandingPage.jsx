@@ -116,12 +116,9 @@ export default function LandingPage() {
               </Link>
             ))}
           </div>
-          <div className="mt-8 text-center flex flex-col sm:flex-row gap-3 justify-center items-center">
+          <div className="mt-8 text-center">
             <Link to="/mentors" className="inline-flex items-center justify-center px-6 py-3 rounded-xl font-medium text-primary-600 border border-primary-200 hover:bg-primary-50 transition">
               멘토 전체 보기
-            </Link>
-            <Link to="/demo" className="inline-flex items-center justify-center px-6 py-3 rounded-xl font-medium text-gray-600 border border-gray-200 hover:bg-gray-50 transition">
-              데모 기능
             </Link>
           </div>
         </div>
